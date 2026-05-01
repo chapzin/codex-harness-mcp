@@ -2,26 +2,49 @@
 import {
   agentSafeContract,
   agentSafeGate,
+  agentSafeState,
   agentSafeTrace,
   compactContext,
   createContract,
   ensureHarness,
   evalGate,
   listHarness,
+  migrateHarness,
   nextStep,
+  recordVerification,
   recordTrace,
   updateState
 } from "./core.mjs";
+import {
+  getHarnessPrompt,
+  listHarnessPrompts,
+  listHarnessResources,
+  readHarnessResource
+} from "./mcp-features.mjs";
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.2"
+  version: "0.1.3"
 };
 
 const stringArray = {
   type: "array",
   items: { type: "string" },
   default: []
+};
+
+const objectOutputSchema = {
+  type: "object",
+  additionalProperties: true
+};
+
+const textOutputSchema = {
+  type: "object",
+  required: ["text"],
+  properties: {
+    text: { type: "string" }
+  },
+  additionalProperties: false
 };
 
 const projectPathProperty = {
@@ -44,7 +67,30 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: ensureHarness
+  },
+  {
+    name: "harness_migrate",
+    description: "Migrate the local .codex-harness state format to the current server version and write an audit log.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await migrateHarness(input);
+      return {
+        projectPath: result.projectPath,
+        fromVersion: result.fromVersion,
+        toVersion: result.toVersion,
+        applied: result.applied,
+        state: agentSafeState(result.state)
+      };
+    }
   },
   {
     name: "harness_create_contract",
@@ -69,6 +115,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await createContract(input);
       return {
@@ -96,6 +143,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: updateState
   },
   {
@@ -118,8 +166,43 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await recordTrace(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_verification",
+    description: "Record structured verification evidence that was run outside the MCP server.",
+    inputSchema: {
+      type: "object",
+      required: ["command_or_check", "status", "raw_output"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        command_or_check: {
+          type: "string",
+          minLength: 1,
+          description: "The command, manual check, or verifier name whose result is being recorded."
+        },
+        status: { type: "string", enum: ["pass", "fail", "unknown"] },
+        exit_code: { type: "integer" },
+        summary: { type: "string" },
+        raw_output: { type: "string" },
+        evidence_paths: stringArray,
+        started_at: { type: "string" },
+        finished_at: { type: "string" },
+        follow_up: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordVerification(input);
       return {
         projectPath: result.projectPath,
         entry: agentSafeTrace(result.entry)
@@ -138,6 +221,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: nextStep
   },
   {
@@ -155,6 +239,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await evalGate(input);
       return {
@@ -177,6 +262,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: textOutputSchema,
     handler: async (input) => (await compactContext(input)).text
   },
   {
@@ -190,6 +276,7 @@ const tools = [
       },
       additionalProperties: false
     },
+    outputSchema: objectOutputSchema,
     handler: listHarness
   }
 ];
@@ -240,7 +327,7 @@ async function handleMessage(message) {
     case "initialize":
       sendResult(message.id, {
         protocolVersion: message.params?.protocolVersion || "2025-06-18",
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: SERVER_INFO
       });
       return;
@@ -257,6 +344,22 @@ async function handleMessage(message) {
 
     case "tools/call":
       await handleToolCall(message);
+      return;
+
+    case "resources/list":
+      sendResult(message.id, await listHarnessResources(message.params || {}));
+      return;
+
+    case "resources/read":
+      sendResult(message.id, await readHarnessResource(message.params?.uri, message.params || {}));
+      return;
+
+    case "prompts/list":
+      sendResult(message.id, listHarnessPrompts());
+      return;
+
+    case "prompts/get":
+      sendResult(message.id, getHarnessPrompt(message.params?.name, message.params?.arguments || {}));
       return;
 
     default:
@@ -276,7 +379,7 @@ async function handleToolCall(message) {
 
   try {
     const value = await tool.handler(args);
-    sendResult(message.id, textResult(value));
+    sendResult(message.id, toolResult(value));
   } catch (error) {
     sendResult(message.id, {
       isError: true,
@@ -290,8 +393,8 @@ async function handleToolCall(message) {
   }
 }
 
-function textResult(value) {
-  return {
+function toolResult(value) {
+  const result = {
     content: [
       {
         type: "text",
@@ -299,6 +402,14 @@ function textResult(value) {
       }
     ]
   };
+
+  if (typeof value === "string") {
+    result.structuredContent = { text: value };
+  } else if (value && typeof value === "object") {
+    result.structuredContent = value;
+  }
+
+  return result;
 }
 
 function sendResult(id, result) {

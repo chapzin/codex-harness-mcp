@@ -8,7 +8,7 @@ const assetRoot = path.join(repoRoot, "assets", "codex-harness-mcp");
 const files = {
   packageJson: path.join(assetRoot, "package.json"),
   packageLock: path.join(assetRoot, "package-lock.json"),
-  server: path.join(assetRoot, "src", "server.mjs"),
+  serverSrc: path.join(assetRoot, "src"),
   installer: path.join(repoRoot, "scripts", "install-codex-harness-mcp.mjs"),
   skill: path.join(repoRoot, "SKILL.md"),
   readme: path.join(repoRoot, "README.md")
@@ -43,8 +43,12 @@ if (await exists(files.packageLock)) {
 }
 
 const combined = await Promise.all(
-  Object.values(files)
-    .filter((filePath) => filePath !== files.packageLock)
+  [
+    ...(await listServerSourceFiles(files.serverSrc)),
+    files.installer,
+    files.skill,
+    files.readme
+  ]
     .map((filePath) => fs.readFile(filePath, "utf8"))
 );
 const allText = combined.join("\n");
@@ -63,12 +67,19 @@ for (const pattern of forbiddenPatterns) {
   }
 }
 
-const serverText = await fs.readFile(files.server, "utf8");
-const externalImports = [...serverText.matchAll(/^\s*import\s+.*?\s+from\s+["']([^"']+)["']/gm)]
-  .map((match) => match[1])
-  .filter((specifier) => !specifier.startsWith("node:") && !specifier.startsWith("./") && !specifier.startsWith("../"));
+const sourceTexts = await Promise.all(
+  (await listServerSourceFiles(files.serverSrc)).map(async (filePath) => ({
+    filePath,
+    text: await fs.readFile(filePath, "utf8")
+  }))
+);
+const externalImports = sourceTexts.flatMap(({ filePath, text }) =>
+  [...text.matchAll(/^\s*import\s+.*?\s+from\s+["']([^"']+)["']/gm)]
+    .map((match) => ({ filePath, specifier: match[1] }))
+    .filter(({ specifier }) => !specifier.startsWith("node:") && !specifier.startsWith("./") && !specifier.startsWith("../"))
+);
 if (externalImports.length > 0) {
-  fail(`Server has external imports: ${externalImports.join(", ")}`);
+  fail(`Server has external imports: ${externalImports.map((item) => `${path.basename(item.filePath)}:${item.specifier}`).join(", ")}`);
 }
 
 if (failures.length > 0) {
@@ -77,3 +88,11 @@ if (failures.length > 0) {
 }
 
 console.log("No unverifiable runtime dependency markers found.");
+
+async function listServerSourceFiles(srcRoot) {
+  const names = await fs.readdir(srcRoot);
+  return names
+    .filter((name) => name.endsWith(".mjs"))
+    .map((name) => path.join(srcRoot, name))
+    .sort();
+}

@@ -5,13 +5,14 @@ import crypto from "node:crypto";
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
 export const UNTRUSTED_CLOSE = "</untrusted-data>";
+export const CURRENT_STATE_VERSION = 2;
 
 const MAX_TEXT_LENGTH = 12000;
 const MAX_ITEM_LENGTH = 2000;
 const MAX_LIST_ITEMS = 50;
 
 const DEFAULT_STATE = {
-  version: 1,
+  version: CURRENT_STATE_VERSION,
   projectName: null,
   focus: null,
   status: "idle",
@@ -19,7 +20,8 @@ const DEFAULT_STATE = {
   counters: {
     contracts: 0,
     traces: 0,
-    gates: 0
+    gates: 0,
+    verifications: 0
   },
   decisions: [],
   events: []
@@ -121,7 +123,14 @@ export function agentSafeTrace(trace) {
     summary: untrustedBlock(trace.summary, "trace.summary"),
     raw: untrustedBlock(trace.raw, "trace.raw"),
     evidencePaths: untrustedList(trace.evidencePaths, "trace.evidencePaths"),
-    followUp: trace.followUp ? untrustedBlock(trace.followUp, "trace.followUp") : null
+    followUp: trace.followUp ? untrustedBlock(trace.followUp, "trace.followUp") : null,
+    verification: trace.verification ? {
+      commandOrCheck: untrustedBlock(trace.verification.commandOrCheck, "trace.verification.commandOrCheck"),
+      status: trace.verification.status,
+      exitCode: trace.verification.exitCode,
+      startedAt: trace.verification.startedAt,
+      finishedAt: trace.verification.finishedAt
+    } : null
   };
 }
 
@@ -213,6 +222,7 @@ export async function ensureHarness(input = {}) {
     fs.mkdir(harnessPath(projectPath, "traces"), { recursive: true }),
     fs.mkdir(harnessPath(projectPath, "gates"), { recursive: true }),
     fs.mkdir(harnessPath(projectPath, "decisions"), { recursive: true }),
+    fs.mkdir(harnessPath(projectPath, "migrations"), { recursive: true }),
     fs.mkdir(harnessPath(projectPath, "artifacts"), { recursive: true }),
     fs.mkdir(harnessPath(projectPath, "scratch"), { recursive: true })
   ]);
@@ -263,6 +273,54 @@ export async function loadState(projectPath) {
 
 export async function saveState(projectPath, state) {
   await writeJson(harnessPath(projectPath, "state.json"), state);
+}
+
+export async function migrateHarness(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const stateFile = harnessPath(projectPath, "state.json");
+  const existing = await readJson(stateFile, DEFAULT_STATE);
+  const fromVersion = Number.isInteger(existing.version) ? existing.version : 0;
+  const applied = [];
+  const migrated = {
+    ...DEFAULT_STATE,
+    ...existing,
+    version: CURRENT_STATE_VERSION,
+    counters: {
+      ...DEFAULT_STATE.counters,
+      ...(existing.counters || {})
+    },
+    decisions: existing.decisions || [],
+    events: existing.events || []
+  };
+
+  if (fromVersion < 2 && existing.counters?.verifications === undefined) {
+    migrated.counters.verifications = 0;
+    applied.push("state-v2-verification-counter");
+  }
+
+  if (fromVersion !== CURRENT_STATE_VERSION || applied.length > 0) {
+    migrated.events.push({
+      ts: nowIso(),
+      type: "state_migrated",
+      summary: `Harness state migrated from v${fromVersion} to v${CURRENT_STATE_VERSION}.`
+    });
+    migrated.events = migrated.events.slice(-80);
+    await writeJson(stateFile, migrated);
+    await appendJsonl(harnessPath(projectPath, "migrations", `${today()}.jsonl`), {
+      ts: nowIso(),
+      fromVersion,
+      toVersion: CURRENT_STATE_VERSION,
+      applied
+    });
+  }
+
+  return {
+    projectPath,
+    fromVersion,
+    toVersion: CURRENT_STATE_VERSION,
+    applied,
+    state: migrated
+  };
 }
 
 export async function updateState(input) {
@@ -406,6 +464,54 @@ export async function recordTrace(input) {
   state.events = state.events.slice(-80);
   await saveState(projectPath, state);
   return { projectPath, entry };
+}
+
+export async function recordVerification(input) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const state = await loadState(projectPath);
+  const commandOrCheck = sanitizeText(input.command_or_check, { maxLength: 500 });
+  if (!commandOrCheck) {
+    throw new Error("command_or_check is required.");
+  }
+
+  const status = normalizeVerificationStatus(input.status);
+  const entry = {
+    id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+    ts: nowIso(),
+    contractId: input.contract_id || state.activeContractId || null,
+    kind: "verification",
+    summary: sanitizeText(input.summary || `${status}: ${commandOrCheck}`, { maxLength: 500 }),
+    raw: sanitizeText(input.raw_output),
+    evidencePaths: sanitizeStringList(input.evidence_paths, { maxLength: 500 }),
+    followUp: sanitizeNullableText(input.follow_up, { maxLength: 1000 }),
+    verification: {
+      commandOrCheck,
+      status,
+      exitCode: Number.isInteger(input.exit_code) ? input.exit_code : null,
+      startedAt: sanitizeNullableText(input.started_at, { maxLength: 80 }),
+      finishedAt: sanitizeNullableText(input.finished_at, { maxLength: 80 })
+    }
+  };
+
+  await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+  state.counters.traces += 1;
+  state.counters.verifications += 1;
+  state.events.push({
+    ts: entry.ts,
+    type: "verification_recorded",
+    traceId: entry.id,
+    contractId: entry.contractId,
+    status: entry.verification.status,
+    summary: entry.summary
+  });
+  state.events = state.events.slice(-80);
+  await saveState(projectPath, state);
+  return { projectPath, entry };
+}
+
+function normalizeVerificationStatus(value) {
+  const status = sanitizeText(value || "unknown", { maxLength: 50 });
+  return ["pass", "fail", "unknown"].includes(status) ? status : "unknown";
 }
 
 export async function readRecentTraces(projectPath, limit = 8) {

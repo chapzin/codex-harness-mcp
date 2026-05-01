@@ -1,6 +1,6 @@
 {
   "name": "codex-harness-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local MCP server that adds harness engineering contracts, durable state, traces, and verification gates for Codex CLI.",
   "type": "module",
   "bin": {

@@ -4,19 +4,19 @@ Agent Skill + bundled MCP server for bringing harness engineering workflows to C
 
 Install with the skills CLI:
 
-```powershell
+```text
 npx skills add chapzin/codex-harness-mcp -g -a codex -y --copy
 ```
 
 Then run the bundled installer from the installed skill directory, or ask Codex to use this skill and install the MCP:
 
-```powershell
+```text
 node scripts/install-codex-harness-mcp.mjs
 ```
 
 Verify:
 
-```powershell
+```text
 codex mcp list
 ```
 
@@ -36,10 +36,6 @@ This package keeps that layer small and local.
 
 ## Security
 
-The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and registers it with Codex CLI. The server uses only Node.js built-in modules, so installation does not download runtime packages.
-
-```powershell
-codex mcp add codex-harness -- node <server-path>
-```
+The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and updates `~/.codex/config.toml` with the `codex-harness` MCP entry. It does not start shells, alter script policy, or download runtime packages. The server uses only Node.js built-in modules.
 
 The MCP writes project-local harness state under `.codex-harness/` in whichever project path the tool receives.

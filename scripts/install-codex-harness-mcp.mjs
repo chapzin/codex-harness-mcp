@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,48 +10,12 @@ const source = path.join(skillRoot, "assets", "codex-harness-mcp");
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const target = path.join(codexHome, "mcp-servers", "codex-harness-mcp");
 const serverPath = path.join(target, "src", "server.mjs");
+const configPath = path.join(codexHome, "config.toml");
+const sectionName = "mcp_servers.codex-harness";
 
-function psQuote(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-function spawnCommand(command, args, options) {
-  if (process.platform !== "win32") {
-    return spawnSync(command, args, options);
-  }
-
-  const script = `& ${psQuote(command)} ${args.map(psQuote).join(" ")}`;
-  return spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], options);
-}
-
-function run(command, args, options = {}) {
-  const result = spawnCommand(command, args, {
-    stdio: "inherit",
-    ...options
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status}`);
-  }
-}
-
-function tryRun(command, args, options = {}) {
-  const result = spawnCommand(command, args, {
-    stdio: "pipe",
-    encoding: "utf8",
-    ...options
-  });
-
-  return {
-    ok: !result.error && result.status === 0,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-    status: result.status
-  };
+function nodeMajorVersion() {
+  const major = Number.parseInt(process.versions.node.split(".")[0], 10);
+  return Number.isFinite(major) ? major : 0;
 }
 
 async function copyServer() {
@@ -64,28 +27,64 @@ async function copyServer() {
   });
 }
 
-async function main() {
-  const nodeCheck = tryRun("node", ["--version"]);
-  if (!nodeCheck.ok) {
-    throw new Error("Node.js 20+ is required, but node was not found in PATH.");
+async function upsertCodexConfig() {
+  await fs.mkdir(codexHome, { recursive: true });
+  let existing = "";
+  try {
+    existing = await fs.readFile(configPath, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
   }
 
-  const codexCheck = tryRun("codex", ["--version"]);
-  if (!codexCheck.ok) {
-    throw new Error("Codex CLI is required, but codex was not found in PATH.");
+  const replacement = [
+    `[${sectionName}]`,
+    `command = ${tomlString("node")}`,
+    `args = [${tomlString(serverPath)}]`,
+    ""
+  ].join("\n");
+  const updated = replaceTomlSection(existing, sectionName, replacement);
+  await fs.writeFile(configPath, updated, "utf8");
+}
+
+function replaceTomlSection(sourceText, targetSection, replacement) {
+  const lines = sourceText.split(/\r?\n/);
+  const header = `[${targetSection}]`;
+  const start = lines.findIndex((line) => line.trim() === header);
+
+  if (start === -1) {
+    const prefix = sourceText.trimEnd();
+    return `${prefix}${prefix ? "\n\n" : ""}${replacement}`;
+  }
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\s*\[[^\]]+\]\s*$/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+
+  const before = lines.slice(0, start).join("\n").trimEnd();
+  const after = lines.slice(end).join("\n").trimStart();
+  return [before, replacement.trimEnd(), after].filter(Boolean).join("\n\n") + "\n";
+}
+
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+async function main() {
+  if (nodeMajorVersion() < 20) {
+    throw new Error("Node.js 20+ is required.");
   }
 
   console.log(`Installing Codex Harness MCP to ${target}`);
   await copyServer();
 
-  const list = tryRun("codex", ["mcp", "list"]);
-  if (list.stdout.includes("codex-harness")) {
-    console.log("Removing existing codex-harness MCP registration...");
-    run("codex", ["mcp", "remove", "codex-harness"]);
-  }
-
-  console.log("Registering codex-harness with Codex CLI...");
-  run("codex", ["mcp", "add", "codex-harness", "--", "node", serverPath]);
+  console.log(`Writing Codex MCP configuration to ${configPath}`);
+  await upsertCodexConfig();
 
   console.log("\nDone. Verify with:");
   console.log("  codex mcp list");

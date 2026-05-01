@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import {
+  agentSafeContract,
+  agentSafeGate,
+  agentSafeTrace,
   compactContext,
   createContract,
   ensureHarness,
@@ -12,7 +15,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.1"
+  version: "0.1.2"
 };
 
 const stringArray = {
@@ -70,7 +73,7 @@ const tools = [
       const result = await createContract(input);
       return {
         projectPath: result.projectPath,
-        contract: result.contract,
+        contract: agentSafeContract(result.contract),
         contractMarkdown: result.markdown
       };
     }
@@ -115,7 +118,13 @@ const tools = [
       },
       additionalProperties: false
     },
-    handler: recordTrace
+    handler: async (input) => {
+      const result = await recordTrace(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
   },
   {
     name: "harness_next_step",
@@ -150,7 +159,8 @@ const tools = [
       const result = await evalGate(input);
       return {
         projectPath: result.projectPath,
-        gate: result.gate,
+        contract: agentSafeContract(result.contract),
+        gate: agentSafeGate(result.gate),
         gateMarkdown: result.markdown
       };
     }

@@ -36,7 +36,7 @@ This package keeps that layer small and local.
 
 ## Security
 
-The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp`, runs `npm install --omit=dev`, and registers it with:
+The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and registers it with Codex CLI. The server uses only Node.js built-in modules, so installation does not download runtime packages.
 
 ```powershell
 codex mcp add codex-harness -- node <server-path>

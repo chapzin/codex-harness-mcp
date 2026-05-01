@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 import {
   compactContext,
   createContract,
@@ -13,147 +10,299 @@ import {
   updateState
 } from "./core.mjs";
 
-const server = new McpServer({
+const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.0"
-});
-
-const projectPathShape = {
-  project_path: z.string().optional().describe("Project root. Defaults to the Codex process cwd.")
+  version: "0.1.1"
 };
 
+const stringArray = {
+  type: "array",
+  items: { type: "string" },
+  default: []
+};
+
+const projectPathProperty = {
+  project_path: {
+    type: "string",
+    description: "Project root. Defaults to the Codex process cwd."
+  }
+};
+
+const tools = [
+  {
+    name: "harness_bootstrap",
+    description: "Create the local .codex-harness workspace for contracts, traces, gates, decisions, and compact context.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        project_name: { type: "string" },
+        force: { type: "boolean", default: false }
+      },
+      additionalProperties: false
+    },
+    handler: ensureHarness
+  },
+  {
+    name: "harness_create_contract",
+    description: "Create a bounded execution contract before implementation.",
+    inputSchema: {
+      type: "object",
+      required: ["title", "goal"],
+      properties: {
+        ...projectPathProperty,
+        title: { type: "string", minLength: 3 },
+        goal: { type: "string", minLength: 5 },
+        required_inputs: stringArray,
+        max_steps: { type: "integer", minimum: 1, default: 8 },
+        max_minutes: { type: "integer", minimum: 1, default: 45 },
+        max_tool_calls: { type: "integer", minimum: 1, default: 30 },
+        permissions: stringArray,
+        completion_conditions: stringArray,
+        output_paths: stringArray,
+        verification_commands: stringArray,
+        failure_taxonomy: stringArray,
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    handler: async (input) => {
+      const result = await createContract(input);
+      return {
+        projectPath: result.projectPath,
+        contract: result.contract,
+        contractMarkdown: result.markdown
+      };
+    }
+  },
+  {
+    name: "harness_update_state",
+    description: "Update durable harness state with focus, status, active contract, notes, or decisions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        focus: { type: "string" },
+        status: {
+          type: "string",
+          enum: ["idle", "planning", "executing", "blocked", "verifying", "done"]
+        },
+        active_contract_id: { type: "string" },
+        note: { type: "string" },
+        decision: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    handler: updateState
+  },
+  {
+    name: "harness_record_trace",
+    description: "Record a raw attempt, failure, success, verification, or decision trace.",
+    inputSchema: {
+      type: "object",
+      required: ["kind", "summary", "raw"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        kind: {
+          type: "string",
+          enum: ["attempt", "failure", "success", "verification", "decision"]
+        },
+        summary: { type: "string", minLength: 3 },
+        raw: { type: "string", minLength: 1 },
+        evidence_paths: stringArray,
+        follow_up: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    handler: recordTrace
+  },
+  {
+    name: "harness_next_step",
+    description: "Inspect active contract, state, output paths, and recent traces; return the smallest useful next step.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        max_traces: { type: "integer", minimum: 1, default: 6 }
+      },
+      additionalProperties: false
+    },
+    handler: nextStep
+  },
+  {
+    name: "harness_eval_gate",
+    description: "Evaluate a contract completion gate using checked conditions, evidence, and required output paths.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        checked_conditions: stringArray,
+        evidence: stringArray,
+        verdict: { type: "string", enum: ["pass", "fail", "unknown"] },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    handler: async (input) => {
+      const result = await evalGate(input);
+      return {
+        projectPath: result.projectPath,
+        gate: result.gate,
+        gateMarkdown: result.markdown
+      };
+    }
+  },
+  {
+    name: "harness_compact_context",
+    description: "Generate a compact handoff context block from state, active contract, decisions, and recent traces.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        max_traces: { type: "integer", minimum: 1, default: 6 }
+      },
+      additionalProperties: false
+    },
+    handler: async (input) => (await compactContext(input)).text
+  },
+  {
+    name: "harness_list",
+    description: "List harness state, contracts, and recent traces for the current project.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        max_traces: { type: "integer", minimum: 1, default: 5 }
+      },
+      additionalProperties: false
+    },
+    handler: listHarness
+  }
+];
+
+const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
+let readBuffer = "";
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  readBuffer += chunk;
+  drainReadBuffer();
+});
+
+process.stdin.on("end", () => process.exit(0));
+
+function drainReadBuffer() {
+  while (readBuffer.includes("\n")) {
+    const index = readBuffer.indexOf("\n");
+    const line = readBuffer.slice(0, index).trim();
+    readBuffer = readBuffer.slice(index + 1);
+    if (!line) continue;
+
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch (error) {
+      sendError(null, -32700, `Invalid JSON: ${error.message}`);
+      continue;
+    }
+
+    handleMessage(message).catch((error) => {
+      sendError(message.id ?? null, -32603, error.message || "Internal error");
+    });
+  }
+}
+
+async function handleMessage(message) {
+  if (!message || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+    sendError(message?.id ?? null, -32600, "Invalid JSON-RPC request.");
+    return;
+  }
+
+  if (message.id === undefined) {
+    return;
+  }
+
+  switch (message.method) {
+    case "initialize":
+      sendResult(message.id, {
+        protocolVersion: message.params?.protocolVersion || "2025-06-18",
+        capabilities: { tools: {} },
+        serverInfo: SERVER_INFO
+      });
+      return;
+
+    case "ping":
+      sendResult(message.id, {});
+      return;
+
+    case "tools/list":
+      sendResult(message.id, {
+        tools: tools.map(({ handler, ...tool }) => tool)
+      });
+      return;
+
+    case "tools/call":
+      await handleToolCall(message);
+      return;
+
+    default:
+      sendError(message.id, -32601, `Unknown method: ${message.method}`);
+  }
+}
+
+async function handleToolCall(message) {
+  const name = message.params?.name;
+  const args = message.params?.arguments || {};
+  const tool = toolMap.get(name);
+
+  if (!tool) {
+    sendError(message.id, -32602, `Unknown tool: ${name || "missing name"}`);
+    return;
+  }
+
+  try {
+    const value = await tool.handler(args);
+    sendResult(message.id, textResult(value));
+  } catch (error) {
+    sendResult(message.id, {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: error.message || String(error)
+        }
+      ]
+    });
+  }
+}
+
 function textResult(value) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return {
     content: [
       {
         type: "text",
-        text
+        text: typeof value === "string" ? value : JSON.stringify(value, null, 2)
       }
     ]
   };
 }
 
-server.tool(
-  "harness_bootstrap",
-  "Create the local .codex-harness workspace for contracts, traces, gates, decisions, and compact context.",
-  {
-    ...projectPathShape,
-    project_name: z.string().optional(),
-    force: z.boolean().default(false).optional()
-  },
-  async (input) => textResult(await ensureHarness(input))
-);
+function sendResult(id, result) {
+  send({ jsonrpc: "2.0", id, result });
+}
 
-server.tool(
-  "harness_create_contract",
-  "Create a bounded execution contract before implementation: goal, inputs, budget, permissions, completion conditions, outputs, and verification.",
-  {
-    ...projectPathShape,
-    title: z.string().min(3),
-    goal: z.string().min(5),
-    required_inputs: z.array(z.string()).default([]).optional(),
-    max_steps: z.number().int().positive().default(8).optional(),
-    max_minutes: z.number().int().positive().default(45).optional(),
-    max_tool_calls: z.number().int().positive().default(30).optional(),
-    permissions: z.array(z.string()).default([]).optional(),
-    completion_conditions: z.array(z.string()).default([]).optional(),
-    output_paths: z.array(z.string()).default([]).optional(),
-    verification_commands: z.array(z.string()).default([]).optional(),
-    failure_taxonomy: z.array(z.string()).default([]).optional(),
-    notes: z.string().optional()
-  },
-  async (input) => {
-    const result = await createContract(input);
-    return textResult({
-      projectPath: result.projectPath,
-      contract: result.contract,
-      contractMarkdown: result.markdown
-    });
-  }
-);
+function sendError(id, code, message) {
+  send({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message }
+  });
+}
 
-server.tool(
-  "harness_update_state",
-  "Update durable harness state with focus, status, active contract, notes, or decisions.",
-  {
-    ...projectPathShape,
-    focus: z.string().optional(),
-    status: z.enum(["idle", "planning", "executing", "blocked", "verifying", "done"]).optional(),
-    active_contract_id: z.string().optional(),
-    note: z.string().optional(),
-    decision: z.string().optional()
-  },
-  async (input) => textResult(await updateState(input))
-);
-
-server.tool(
-  "harness_record_trace",
-  "Record a raw attempt, failure, success, verification, or decision trace. Prefer raw details over summaries when debugging.",
-  {
-    ...projectPathShape,
-    contract_id: z.string().optional(),
-    kind: z.enum(["attempt", "failure", "success", "verification", "decision"]),
-    summary: z.string().min(3),
-    raw: z.string().min(1),
-    evidence_paths: z.array(z.string()).default([]).optional(),
-    follow_up: z.string().optional()
-  },
-  async (input) => textResult(await recordTrace(input))
-);
-
-server.tool(
-  "harness_next_step",
-  "Inspect active contract, state, output paths, and recent traces; return the smallest useful next step.",
-  {
-    ...projectPathShape,
-    contract_id: z.string().optional(),
-    max_traces: z.number().int().positive().default(6).optional()
-  },
-  async (input) => textResult(await nextStep(input))
-);
-
-server.tool(
-  "harness_eval_gate",
-  "Evaluate a contract completion gate using checked conditions, evidence, and required output paths. Does not execute commands.",
-  {
-    ...projectPathShape,
-    contract_id: z.string().optional(),
-    checked_conditions: z.array(z.string()).default([]).optional(),
-    evidence: z.array(z.string()).default([]).optional(),
-    verdict: z.enum(["pass", "fail", "unknown"]).optional(),
-    notes: z.string().optional()
-  },
-  async (input) => {
-    const result = await evalGate(input);
-    return textResult({
-      projectPath: result.projectPath,
-      gate: result.gate,
-      gateMarkdown: result.markdown
-    });
-  }
-);
-
-server.tool(
-  "harness_compact_context",
-  "Generate a compact handoff context block from state, active contract, decisions, and recent traces.",
-  {
-    ...projectPathShape,
-    contract_id: z.string().optional(),
-    max_traces: z.number().int().positive().default(6).optional()
-  },
-  async (input) => textResult((await compactContext(input)).text)
-);
-
-server.tool(
-  "harness_list",
-  "List harness state, contracts, and recent traces for the current project.",
-  {
-    ...projectPathShape,
-    max_traces: z.number().int().positive().default(5).optional()
-  },
-  async (input) => textResult(await listHarness(input))
-);
-
-const transport = new StdioServerTransport();
-await server.connect(transport);
+function send(message) {
+  process.stdout.write(`${JSON.stringify(message)}\n`);
+}

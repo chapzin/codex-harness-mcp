@@ -78,9 +78,6 @@ async function main() {
   console.log(`Installing Codex Harness MCP to ${target}`);
   await copyServer();
 
-  console.log("Installing MCP server dependencies...");
-  run("npm", ["install", "--omit=dev"], { cwd: target });
-
   const list = tryRun("codex", ["mcp", "list"]);
   if (list.stdout.includes("codex-harness")) {
     console.log("Removing existing codex-harness MCP registration...");

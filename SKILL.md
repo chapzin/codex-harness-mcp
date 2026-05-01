@@ -2,7 +2,7 @@
 name: codex-harness-mcp
 description: Installs and uses a local Codex MCP server for harness engineering. Use when a user wants Codex CLI workflows with explicit execution contracts, durable file-backed state, raw traces, next-step recovery, compact handoff context, or completion gates before claiming work is done.
 license: MIT
-compatibility: Requires Node.js 20+ and Codex CLI. The bundled installer registers a local stdio MCP server with codex mcp add.
+compatibility: Requires Node.js 20+ and Codex CLI. The bundled installer registers a dependency-free local stdio MCP server with codex mcp add.
 ---
 
 # Codex Harness MCP
@@ -17,7 +17,7 @@ Run the installer from this skill directory:
 node scripts/install-codex-harness-mcp.mjs
 ```
 
-The installer copies the bundled MCP server to `~/.codex/mcp-servers/codex-harness-mcp`, installs its npm dependencies, and registers it as `codex-harness` with Codex CLI.
+The installer copies the bundled MCP server to `~/.codex/mcp-servers/codex-harness-mcp` and registers it as `codex-harness` with Codex CLI. The bundled server uses only Node.js built-in modules and does not download packages during installation.
 
 Verify:
 

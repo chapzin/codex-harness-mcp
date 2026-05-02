@@ -45,26 +45,40 @@ if (await exists(files.packageLock)) {
 const combined = await Promise.all(
   [
     ...(await listServerSourceFiles(files.serverSrc)),
-    files.installer,
-    files.skill,
-    files.readme
+    files.installer
   ]
     .map((filePath) => fs.readFile(filePath, "utf8"))
 );
-const allText = combined.join("\n");
+const runtimeText = combined.join("\n");
+const docText = [
+  await fs.readFile(files.skill, "utf8"),
+  await fs.readFile(files.readme, "utf8")
+].join("\n");
 
 const forbiddenPatterns = [
   new RegExp(["npm", "install"].join("\\s+"), "i"),
   new RegExp(["registry", "npmjs", "org"].join("\\."), "i"),
   new RegExp(`@${["modelcontextprotocol", "sdk"].join("\\/")}`, "i"),
-  new RegExp(`\\b${["z", "od"].join("")}\\b`, "i"),
-  new RegExp("https?:\\/\\/", "i")
+  new RegExp(`\\b${["z", "od"].join("")}\\b`, "i")
 ];
 
 for (const pattern of forbiddenPatterns) {
-  if (pattern.test(allText)) {
+  if (pattern.test(`${runtimeText}\n${docText}`)) {
     fail(`Forbidden runtime dependency marker found: ${pattern}`);
   }
+}
+
+if (/https?:\/\//i.test(runtimeText)) {
+  fail("Runtime or installer files must not contain external URLs.");
+}
+
+const docUrls = [...docText.matchAll(/https?:\/\/[^\s)]+/gi)].map((match) => match[0]);
+const allowedDocUrls = new Set([
+  "https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp"
+]);
+const unexpectedDocUrls = docUrls.filter((url) => !allowedDocUrls.has(url));
+if (unexpectedDocUrls.length > 0) {
+  fail(`Unexpected external documentation URLs in README/SKILL: ${unexpectedDocUrls.join(", ")}`);
 }
 
 const sourceTexts = await Promise.all(

@@ -9,8 +9,14 @@ import {
   ensureHarness,
   evalGate,
   listHarness,
+  listKnowledge,
   migrateHarness,
   nextStep,
+  queryKnowledge,
+  rebuildKnowledgeIndex,
+  recordImplementationLesson,
+  recordKnowledge,
+  recordResearchSource,
   recordVerification,
   recordTrace,
   updateState
@@ -24,7 +30,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.3"
+  version: "0.1.4"
 };
 
 const stringArray = {
@@ -210,6 +216,115 @@ const tools = [
     }
   },
   {
+    name: "harness_record_knowledge",
+    description: "Persist a generic local knowledge item for future retrieval by the harness RAG index.",
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        kind: {
+          type: "string",
+          enum: ["knowledge", "research", "implementation_lesson", "decision", "source", "pattern", "project_note"]
+        },
+        title: { type: "string", minLength: 3 },
+        summary: { type: "string" },
+        content: { type: "string" },
+        tags: stringArray,
+        key_findings: stringArray,
+        files_changed: stringArray,
+        evidence: stringArray,
+        confidence: { type: "string", enum: ["low", "medium", "high", "unknown"] },
+        source_type: { type: "string" },
+        source_url: { type: "string" },
+        source_path: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordKnowledge
+  },
+  {
+    name: "harness_record_research",
+    description: "Persist a research source or web finding in the local harness knowledge index.",
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        title: { type: "string", minLength: 3 },
+        source_url: { type: "string" },
+        source_path: { type: "string" },
+        source_type: { type: "string" },
+        summary: { type: "string" },
+        key_findings: stringArray,
+        content: { type: "string" },
+        tags: stringArray,
+        confidence: { type: "string", enum: ["low", "medium", "high", "unknown"] },
+        evidence: stringArray
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordResearchSource
+  },
+  {
+    name: "harness_record_lesson",
+    description: "Persist an implementation lesson learned from a completed attempt, failure, or fix.",
+    inputSchema: {
+      type: "object",
+      required: ["title", "problem", "solution"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        title: { type: "string", minLength: 3 },
+        problem: { type: "string", minLength: 3 },
+        solution: { type: "string", minLength: 3 },
+        summary: { type: "string" },
+        key_findings: stringArray,
+        files_changed: stringArray,
+        evidence: stringArray,
+        tags: stringArray,
+        confidence: { type: "string", enum: ["low", "medium", "high", "unknown"] }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordImplementationLesson
+  },
+  {
+    name: "harness_query_knowledge",
+    description: "Query the local persistent harness knowledge index for relevant research, lessons, and notes.",
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: {
+        ...projectPathProperty,
+        query: { type: "string", minLength: 1 },
+        tags: stringArray,
+        max_results: { type: "integer", minimum: 1, default: 5 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: queryKnowledge
+  },
+  {
+    name: "harness_rebuild_knowledge_index",
+    description: "Rebuild the local knowledge index from persisted knowledge item files.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: rebuildKnowledgeIndex
+  },
+  {
     name: "harness_next_step",
     description: "Inspect active contract, state, output paths, and recent traces; return the smallest useful next step.",
     inputSchema: {
@@ -278,11 +393,27 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: listHarness
+  },
+  {
+    name: "harness_list_knowledge",
+    description: "List recent local harness knowledge items.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 10 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listKnowledge
   }
 ];
 
 const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
 let readBuffer = "";
+let pendingMessages = 0;
+let inputEnded = false;
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -290,26 +421,52 @@ process.stdin.on("data", (chunk) => {
   drainReadBuffer();
 });
 
-process.stdin.on("end", () => process.exit(0));
+process.stdin.on("end", () => {
+  inputEnded = true;
+  drainReadBuffer({ flushFinal: true });
+  maybeExit();
+});
 
-function drainReadBuffer() {
+function drainReadBuffer(options = {}) {
   while (readBuffer.includes("\n")) {
     const index = readBuffer.indexOf("\n");
     const line = readBuffer.slice(0, index).trim();
     readBuffer = readBuffer.slice(index + 1);
-    if (!line) continue;
+    processLine(line);
+  }
 
-    let message;
-    try {
-      message = JSON.parse(line);
-    } catch (error) {
-      sendError(null, -32700, `Invalid JSON: ${error.message}`);
-      continue;
-    }
+  if (options.flushFinal && readBuffer.trim()) {
+    const line = readBuffer.trim();
+    readBuffer = "";
+    processLine(line);
+  }
+}
 
-    handleMessage(message).catch((error) => {
+function processLine(line) {
+  if (!line) return;
+
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch (error) {
+    sendError(null, -32700, `Invalid JSON: ${error.message}`);
+    return;
+  }
+
+  pendingMessages += 1;
+  handleMessage(message)
+    .catch((error) => {
       sendError(message.id ?? null, -32603, error.message || "Internal error");
+    })
+    .finally(() => {
+      pendingMessages -= 1;
+      maybeExit();
     });
+}
+
+function maybeExit() {
+  if (inputEnded && pendingMessages === 0) {
+    process.exit(0);
   }
 }
 

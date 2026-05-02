@@ -32,6 +32,9 @@ try {
   if (!result.applied.includes("state-v2-verification-counter")) {
     throw new Error("Migration did not apply the v2 verification counter migration.");
   }
+  if (!result.applied.includes("state-v3-knowledge-counters")) {
+    throw new Error("Migration did not apply the v3 knowledge counter migration.");
+  }
 
   const state = await loadState(projectPath);
   if (state.version !== CURRENT_STATE_VERSION) {
@@ -39,6 +42,9 @@ try {
   }
   if (state.counters.verifications !== 0) {
     throw new Error("Migrated state did not backfill verification counter.");
+  }
+  if (state.counters.knowledgeItems !== 0 || state.counters.knowledgeQueries !== 0) {
+    throw new Error("Migrated state did not backfill knowledge counters.");
   }
 
   const migrationFiles = await fs.readdir(harnessPath(projectPath, "migrations"));

@@ -197,6 +197,7 @@ This slice improves usability and MCP completeness while keeping the skills.sh/S
 Implementation status:
 
 - 2026-05-01: Implemented the slice above in server version `0.1.3`: MCP resources, MCP prompts, structured tool results, `harness_record_verification`, and state migration via `harness_migrate`.
+- 2026-05-02: Implemented persistent local knowledge/RAG in server version `0.1.4`: research capture, implementation lessons, lexical retrieval, knowledge resources/prompts, and state migration v3.
 
 ## Source links
 

@@ -20,7 +20,7 @@ Verify:
 codex mcp list
 ```
 
-The MCP server adds tools for execution contracts, durable state, raw traces, structured verification records, next-step recovery, compact handoff context, and completion gates. It also exposes MCP resources and prompts for clients that surface project context or reusable workflows.
+The MCP server adds tools for execution contracts, durable state, raw traces, local knowledge RAG, structured verification records, next-step recovery, compact handoff context, and completion gates. It also exposes MCP resources and prompts for clients that surface project context or reusable workflows.
 
 ## Why
 
@@ -29,6 +29,8 @@ The useful part of harness engineering is not just "more tools"; it is explicit 
 - bounded contracts before implementation
 - file-backed state that survives compaction and restarts
 - raw traces for failure recovery
+- local persistent knowledge from research sources and implementation lessons
+- retrieval before implementation so agents can reuse what was already learned
 - structured verification evidence without server-side command execution
 - narrow retry loops
 - explicit gates before claiming completion
@@ -41,6 +43,8 @@ The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-ha
 
 The MCP writes project-local harness state under `.codex-harness/` in whichever project path the tool receives.
 
+The knowledge store is local and dependency-free. It writes sanitized JSON/Markdown under `.codex-harness/knowledge/` and uses deterministic lexical retrieval. The MCP does not browse the internet itself; agents should research with their normal tools, then record useful sources with `harness_record_research`.
+
 ## MCP surface
 
 Tools:
@@ -51,6 +55,12 @@ Tools:
 - `harness_update_state`
 - `harness_record_trace`
 - `harness_record_verification`
+- `harness_record_knowledge`
+- `harness_record_research`
+- `harness_record_lesson`
+- `harness_query_knowledge`
+- `harness_rebuild_knowledge_index`
+- `harness_list_knowledge`
 - `harness_next_step`
 - `harness_eval_gate`
 - `harness_compact_context`
@@ -63,6 +73,9 @@ Resources:
 - `harness://contract/{id}`
 - `harness://traces/recent`
 - `harness://gates/recent`
+- `harness://knowledge/index`
+- `harness://knowledge/recent`
+- `harness://knowledge/item/{id}`
 
 Prompts:
 
@@ -71,3 +84,6 @@ Prompts:
 - `harness_failure_recovery`
 - `harness_verify_and_close`
 - `harness_handoff_context`
+- `harness_deep_research`
+- `harness_learn_from_implementation`
+- `harness_query_knowledge`

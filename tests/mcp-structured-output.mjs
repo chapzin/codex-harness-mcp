@@ -9,8 +9,8 @@ const serverText = await fs.readFile(serverPath, "utf8");
 const toolNames = [...serverText.matchAll(/name:\s+"(harness_[^"]+)"/g)].map((match) => match[1]);
 const outputSchemaCount = [...serverText.matchAll(/\boutputSchema\s*:/g)].length;
 
-if (toolNames.length < 10) {
-  throw new Error(`Expected at least 10 harness tools after adding migration, found ${toolNames.length}.`);
+if (toolNames.length < 15) {
+  throw new Error(`Expected at least 15 harness tools after adding persistent knowledge, found ${toolNames.length}.`);
 }
 
 if (outputSchemaCount < toolNames.length) {
@@ -23,8 +23,14 @@ for (const marker of [
   "resources/read",
   "prompts/list",
   "prompts/get",
+  "pendingMessages",
   "harness_migrate",
-  "harness_record_verification"
+  "harness_record_verification",
+  "harness_record_research",
+  "harness_record_lesson",
+  "harness_record_knowledge",
+  "harness_query_knowledge",
+  "harness_rebuild_knowledge_index"
 ]) {
   if (!serverText.includes(marker)) {
     throw new Error(`Server is missing MCP protocol marker: ${marker}`);

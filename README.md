@@ -1,14 +1,36 @@
 # Codex Harness MCP
 
-Agent Skill + bundled MCP server for bringing harness engineering workflows to Codex CLI.
+Contracts, local memory, traces, and completion gates for Codex CLI.
 
-Install with the skills CLI:
+`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, and run a gate before saying the work is done.
+
+![Codex Harness MCP loop](docs/assets/harness-loop.svg)
+
+## Why agents need a harness
+
+Long-running agent work fails in boring ways: context gets compacted, research is repeated, failures are summarized too early, verification evidence disappears, and "done" gets claimed before the work is actually checked.
+
+This MCP gives Codex a small local control plane:
+
+- execution contracts before implementation
+- project-local RAG from research and implementation lessons
+- raw traces for attempts, failures, decisions, and verification
+- structured verification records
+- next-step recovery after a failure
+- compact handoff context for long sessions
+- explicit completion gates
+
+The goal is not to replace Codex. The goal is to give Codex a durable working memory and a safer operating loop.
+
+## Install
+
+Install the skill:
 
 ```text
 npx skills add chapzin/codex-harness-mcp -g -a codex -y --copy
 ```
 
-Then run the bundled installer from the installed skill directory, or ask Codex to use this skill and install the MCP:
+Then run the bundled installer from the installed skill directory, or from this repository:
 
 ```text
 node scripts/install-codex-harness-mcp.mjs
@@ -20,30 +42,42 @@ Verify:
 codex mcp list
 ```
 
-The MCP server adds tools for execution contracts, durable state, raw traces, local knowledge RAG, structured verification records, next-step recovery, compact handoff context, and completion gates. It also exposes MCP resources and prompts for clients that surface project context or reusable workflows.
+Expected MCP entry:
 
-## Why
+```text
+codex-harness  node  ~/.codex/mcp-servers/codex-harness-mcp/src/server.mjs
+```
 
-The useful part of harness engineering is not just "more tools"; it is explicit control logic around the agent:
+## Start with this prompt
 
-- bounded contracts before implementation
-- file-backed state that survives compaction and restarts
-- raw traces for failure recovery
-- local persistent knowledge from research sources and implementation lessons
-- retrieval before implementation so agents can reuse what was already learned
-- structured verification evidence without server-side command execution
-- narrow retry loops
-- explicit gates before claiming completion
+```text
+Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, and run the eval gate before saying the task is done.
+```
 
-This package keeps that layer small and local.
+## What it adds to Codex
 
-## Security
+| Capability | What it solves |
+| --- | --- |
+| Contracts | Keeps work bounded with goals, permissions, budgets, outputs, and completion conditions. |
+| Local knowledge RAG | Lets future sessions reuse project research and implementation lessons. |
+| Raw traces | Preserves the exact failure or verification signal for recovery. |
+| Verification records | Stores command output or manual checks without the MCP running shell commands. |
+| Next-step recovery | Helps narrow the next attempt after failure instead of thrashing. |
+| Completion gates | Makes "done" an explicit evidence check, not a vibe. |
+| Handoff context | Produces compact restart context after compaction or session changes. |
 
-The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and updates `~/.codex/config.toml` with the `codex-harness` MCP entry. It does not start shells, alter script policy, or download runtime packages. The server uses only Node.js built-in modules.
+## The harness loop
 
-The MCP writes project-local harness state under `.codex-harness/` in whichever project path the tool receives.
-
-The knowledge store is local and dependency-free. It writes sanitized JSON/Markdown under `.codex-harness/knowledge/` and uses deterministic lexical retrieval. The MCP does not browse the internet itself; agents should research with their normal tools, then record useful sources with `harness_record_research`.
+```text
+User request
+  -> query project knowledge
+  -> create execution contract
+  -> implement inside contract boundaries
+  -> record traces, research, and lessons
+  -> record verification evidence
+  -> evaluate completion gate
+  -> compact handoff context when needed
+```
 
 ## MCP surface
 
@@ -87,3 +121,61 @@ Prompts:
 - `harness_deep_research`
 - `harness_learn_from_implementation`
 - `harness_query_knowledge`
+
+## Local knowledge RAG
+
+The knowledge store is intentionally simple and local. It writes sanitized JSON and Markdown under:
+
+```text
+.codex-harness/knowledge/
+```
+
+Use it like this:
+
+1. Query first with `harness_query_knowledge`.
+2. If the answer is missing or stale, research normally with Codex web/GitHub tools.
+3. Store useful findings with `harness_record_research`.
+4. After implementation, store reusable lessons with `harness_record_lesson`.
+5. Future sessions retrieve that knowledge before planning.
+
+This is not a hosted vector database. It is a dependency-free lexical retrieval layer designed to be transparent, inspectable, and safe for local agent work.
+
+## Security model
+
+The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and updates Codex `config.toml`.
+
+It does not:
+
+- download runtime packages
+- start shells
+- alter script execution policy
+- run verification commands
+- browse the internet
+- call remote services
+- read credentials
+
+The server uses only Node.js built-in modules. It writes project-local state under `.codex-harness/`.
+
+Stored user/source content is returned inside `<untrusted-data>` boundaries so the agent treats it as evidence, not instructions.
+
+## What this is not
+
+Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry layer.
+
+It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, resources, prompts, and gates.
+
+## Development checks
+
+Run all tests:
+
+```text
+Get-ChildItem .\tests -Filter *.mjs | Sort-Object Name | ForEach-Object { node $_.FullName; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+```
+
+Key guardrails:
+
+- no runtime dependency downloads
+- no installer command execution markers
+- prompt-injection boundaries enforced
+- resources and prompts exposed safely
+- persistent knowledge RAG queryable locally

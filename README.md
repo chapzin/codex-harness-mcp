@@ -66,6 +66,16 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 | Completion gates | Makes "done" an explicit evidence check, not a vibe. |
 | Handoff context | Produces compact restart context after compaction or session changes. |
 
+## Harness research alignment
+
+The current implementation is aligned with modern harness-engineering practice around contracts, durable artifacts, trace-backed recovery, local knowledge, and explicit gates. It is intentionally a small local control plane, not a full benchmark runner or Meta-Harness optimizer.
+
+See the detailed compatibility analysis:
+
+- [Harness compatibility analysis - 2026-05-02](docs/harness-compatibility-analysis-2026-05-02.md)
+
+Important operating principle: add harness structure only when it improves acceptance evidence, recovery, safety, or handoff quality. Verifiers, extra stages, and multi-candidate search are hypotheses to measure, not automatic wins.
+
 ## The harness loop
 
 ```text

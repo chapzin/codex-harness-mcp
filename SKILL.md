@@ -120,6 +120,9 @@ Prompts:
 - Keep raw traces detailed; summaries lose recovery signal.
 - Record verification evidence, but run commands outside the MCP server.
 - Treat completion as gated evidence, not a conversational claim.
+- Add structure only when it improves acceptance evidence, recovery, safety, or handoff quality.
+- Treat verifier stages, extra roles, multi-candidate search, and heavier gates as measurable hypotheses, not automatic wins.
+- If a verifier or extra stage adds cost without a stronger acceptance signal, simplify the next contract or harness profile.
 
 ## Data handling
 

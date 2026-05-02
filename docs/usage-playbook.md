@@ -1,6 +1,6 @@
 # Codex Harness MCP Usage Playbook
 
-This playbook shows how to use `codex-harness-mcp` as a practical harness-engineering loop for Codex CLI.
+This playbook shows how to use `codex-harness-mcp` as a practical harness-engineering loop for Codex CLI and other MCP-compatible coding clients.
 
 The MCP server is deliberately small and local. It stores evidence and exposes harness state. It does not run shell commands, browse the web, call remote services, download packages, or handle credentials.
 
@@ -39,6 +39,12 @@ Run the installer:
 node scripts/install-codex-harness-mcp.mjs
 ```
 
+To also write project/global MCP config files for the major coding clients:
+
+```text
+node scripts/install-codex-harness-mcp.mjs --clients all --scope auto --project .
+```
+
 Verify:
 
 ```text
@@ -50,6 +56,8 @@ Expected entry:
 ```text
 codex-harness  node  ~/.codex/mcp-servers/codex-harness-mcp/src/server.mjs
 ```
+
+For Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and Roo Code config shapes, see [Multi-client MCP setup](multi-client-setup.md).
 
 ## Standard implementation loop
 

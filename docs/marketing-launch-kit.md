@@ -30,13 +30,13 @@ Use these as the campaign's credibility base:
 
 ### One-line pitch
 
-Codex Harness MCP gives Codex CLI a local operating system for serious work: contracts, memory, traces, observability reports, evals, promotion evidence, and completion gates.
+Codex Harness MCP gives Codex CLI and other MCP coding agents a local operating system for serious work: contracts, memory, traces, observability reports, evals, promotion evidence, and completion gates.
 
 ### Short pitch
 
 Prompt engineering gets the agent started. Harness engineering keeps it from drifting.
 
-`codex-harness-mcp` is a dependency-free local MCP server for Codex CLI that stores the work around the model: contracts, local RAG memory, traces, verification evidence, observability reports, eval runs, harness proposals, promotion decisions, natural-language harness specs, and completion gates.
+`codex-harness-mcp` is a dependency-free local MCP server for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config. It stores the work around the model: contracts, local RAG memory, traces, verification evidence, observability reports, eval runs, harness proposals, promotion decisions, natural-language harness specs, and completion gates.
 
 It does not run commands. It records proof.
 
@@ -53,7 +53,7 @@ That is the harness.
 Target people who already feel pain from coding agents:
 
 - Codex CLI users
-- Claude Code / Cursor / Gemini CLI power users
+- Claude Code / Cursor / Gemini CLI / OpenCode / Kilo power users
 - MCP builders
 - AI agent developers
 - DevTools founders
@@ -71,7 +71,7 @@ Post manually and adapt to community rules. Do not spam the same copy everywhere
 | Reddit r/mcp | Local dependency-free MCP, no shell execution | Security-first MCP post |
 | Reddit r/LocalLLaMA | Harness patterns and local state, model-agnostic idea | Technical discussion |
 | Reddit r/AgentsOfAI | Agent orchestration, evals, memory, gates | Concept + tool |
-| Hacker News | Show HN: local MCP harness for Codex CLI | Low-hype technical launch |
+| Hacker News | Show HN: local MCP harness for coding agents | Low-hype technical launch |
 | LinkedIn | Harness engineering is the new team infrastructure | Story + business value |
 | X/Twitter | Punchy thread | 8-10 posts |
 | YouTube comments | Reply under videos about Codex, MCP, AI agents, harness engineering | Short, helpful comment |
@@ -95,10 +95,66 @@ Post manually and adapt to community rules. Do not spam the same copy everywhere
 Title:
 
 ```text
-Eu criei um MCP para dar um "sistema operacional" ao Codex CLI
+Eu criei um MCP para dar um "sistema operacional" aos agentes de codigo
 ```
 
 Body:
+
+```text
+A maioria das pessoas ainda esta tentando melhorar agente com prompt maior.
+
+So que o jogo mudou.
+
+O problema nao e so o modelo.
+O problema e o harness em volta do modelo.
+
+Quando um agente de codigo entra em tarefa longa, algumas coisas quebram silenciosamente:
+
+- ele esquece pesquisa feita antes
+- perde o motivo de uma decisao
+- resume erro cedo demais
+- repete tentativa que ja falhou
+- diz "feito" sem prova
+- muda o proprio fluxo sem medir se melhorou
+
+Entao eu criei o Codex Harness MCP.
+
+E um MCP local, sem dependencias externas, que da ao Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline e Windsurf uma camada de engenharia de harness:
+
+- contratos de execucao antes de implementar
+- memoria local/RAG por projeto
+- traces brutos de tentativa, erro, decisao e sucesso
+- registro de verificacao sem o MCP executar shell
+- relatorio local de observabilidade
+- eval cases e eval runs para medir mudancas no harness
+- perfis de harness
+- proposal + promotion decision estilo Meta-Harness-lite
+- export do harness em linguagem natural
+- completion gate antes de declarar pronto
+
+A ideia e simples:
+
+Prompt faz o agente comecar.
+Harness faz o agente trabalhar como engenharia.
+
+Instalacao:
+
+npx skills add chapzin/codex-harness-mcp -g -a codex -y --copy
+
+Multi-client:
+
+node scripts/install-codex-harness-mcp.mjs --clients all --scope auto --project .
+
+Repo:
+https://github.com/chapzin/codex-harness-mcp
+
+Skill:
+https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp
+
+Se voce usa agentes de codigo para trabalho real, teste isso em uma tarefa longa e veja a diferenca: o agente comeca a deixar rastro, memoria e prova.
+```
+
+<!-- Legacy encoded draft retained only as historical source material.
 
 ```text
 A maioria das pessoas ainda está tentando melhorar agente com prompt maior.
@@ -149,12 +205,14 @@ https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp
 Se você usa Codex CLI para trabalho real, teste isso em uma tarefa longa e veja a diferença: o agente começa a deixar rastro, memória e prova.
 ```
 
+-->
+
 ## English flagship post
 
 Title:
 
 ```text
-I built a local MCP harness for Codex CLI: contracts, memory, evals, traces, and gates
+I built a local MCP harness for coding agents: contracts, memory, evals, traces, and gates
 ```
 
 Body:
@@ -164,7 +222,7 @@ Most people are still trying to improve coding agents with bigger prompts.
 
 I think the real leverage is moving down a layer: the harness.
 
-When a Codex session gets long, the failures are quiet:
+When a coding-agent session gets long, the failures are quiet:
 
 - research gets repeated
 - decisions lose their evidence
@@ -175,7 +233,7 @@ When a Codex session gets long, the failures are quiet:
 
 So I built Codex Harness MCP.
 
-It is a dependency-free local MCP server for Codex CLI that gives the agent a project-local system of record:
+It is a dependency-free local MCP server for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config. It gives the agent a project-local system of record:
 
 - execution contracts
 - local RAG knowledge
@@ -198,6 +256,10 @@ Install:
 
 npx skills add chapzin/codex-harness-mcp -g -a codex -y --copy
 
+Multi-client:
+
+node scripts/install-codex-harness-mcp.mjs --clients all --scope auto --project .
+
 GitHub:
 https://github.com/chapzin/codex-harness-mcp
 
@@ -210,15 +272,15 @@ https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp
 Title options:
 
 ```text
-Show HN: Codex Harness MCP - a local harness layer for Codex CLI
+Show HN: Codex Harness MCP - a local harness layer for coding agents
 Show HN: I built a dependency-free MCP server for Codex harness engineering
-Show HN: Local contracts, memory, evals, and gates for Codex CLI
+Show HN: Local contracts, memory, evals, and gates for MCP coding agents
 ```
 
 Body:
 
 ```text
-I built a small local MCP server for Codex CLI that focuses on harness engineering rather than command execution.
+I built a small local MCP server for MCP-compatible coding clients that focuses on harness engineering rather than command execution.
 
 The goal is to make long-running agent work more inspectable:
 

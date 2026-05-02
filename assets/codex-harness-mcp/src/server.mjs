@@ -44,7 +44,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.8"
+  version: "0.1.9"
 };
 
 const stringArray = {

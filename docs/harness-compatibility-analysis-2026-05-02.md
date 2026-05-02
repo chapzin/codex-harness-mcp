@@ -6,7 +6,7 @@ This note evaluates `codex-harness-mcp` against recent harness engineering resea
 
 `codex-harness-mcp` is compatible with the core harness-engineering direction, but it is not yet a full benchmark optimizer or Meta-Harness implementation.
 
-It is best described as a small, local, dependency-free control plane for Codex CLI:
+It is best described as a small, local, dependency-free control plane for Codex CLI and MCP-compatible coding clients:
 
 - Strong fit for contracts, durable state, local knowledge, traces, verification evidence, completion gates, and handoff context.
 - Partial fit for natural-language harness representation because the user-facing skill and prompts are natural-language artifacts, while much of the actual orchestration is still encoded in JavaScript tools and schemas.
@@ -15,6 +15,7 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Now exports the current harness as a natural-language spec with roles, stages, adapters, state semantics, failure taxonomy, and stop rules.
 - Now has a safe Meta-Harness-lite layer for recording harness-change proposals and promotion decisions with baseline, candidate, holdout, regression, risk, and follow-up evidence.
 - Now has a local trace-level observability report for AgentOps review: active contract, trace inventory, eval posture, operational memory, governance, safety, and blind spots.
+- Now has a multi-client config layer for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config.
 - Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
 Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until ablation runners, live telemetry, cross-model transfer checks, and harness-version search features exist.
@@ -39,6 +40,7 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 | Anthropic long-running agent pattern | Strong core, partial workflow | Bootstrap, contracts, progress traces, handoff context, verification evidence | No structured feature list, one-feature queue, git-progress integration, or initializer/coding role split. |
 | LangChain harness engineering pattern | Partial-to-strong local record layer | Traces, verification, environment/context notes via contracts and RAG, token/cost/time/tool-call metrics in eval runs, holdout/proposal records | No automatic trace analysis, runner integration, or loop detection yet. |
 | OpenAI agent-legible repo pattern | Strong direction | Local docs, no runtime dependencies, inspectable MCP implementation | No docs freshness lint, architecture lint, or doc-gardening workflow. |
+| Client portability | Strong local MCP foundation | One dependency-free stdio server plus config writers for the major MCP coding clients | Runtime behavior still depends on each client surfacing tools/resources/prompts consistently. |
 
 ## Fit against the user's key claims
 

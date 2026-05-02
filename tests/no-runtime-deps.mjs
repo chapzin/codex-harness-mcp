@@ -10,6 +10,7 @@ const files = {
   packageLock: path.join(assetRoot, "package-lock.json"),
   serverSrc: path.join(assetRoot, "src"),
   installer: path.join(repoRoot, "scripts", "install-codex-harness-mcp.mjs"),
+  installerLib: path.join(repoRoot, "scripts", "lib"),
   skill: path.join(repoRoot, "SKILL.md"),
   readme: path.join(repoRoot, "README.md")
 };
@@ -45,7 +46,8 @@ if (await exists(files.packageLock)) {
 const combined = await Promise.all(
   [
     ...(await listServerSourceFiles(files.serverSrc)),
-    files.installer
+    files.installer,
+    ...(await listServerSourceFiles(files.installerLib))
   ]
     .map((filePath) => fs.readFile(filePath, "utf8"))
 );
@@ -82,7 +84,11 @@ if (unexpectedDocUrls.length > 0) {
 }
 
 const sourceTexts = await Promise.all(
-  (await listServerSourceFiles(files.serverSrc)).map(async (filePath) => ({
+  [
+    ...(await listServerSourceFiles(files.serverSrc)),
+    files.installer,
+    ...(await listServerSourceFiles(files.installerLib))
+  ].map(async (filePath) => ({
     filePath,
     text: await fs.readFile(filePath, "utf8")
   }))
@@ -93,7 +99,7 @@ const externalImports = sourceTexts.flatMap(({ filePath, text }) =>
     .filter(({ specifier }) => !specifier.startsWith("node:") && !specifier.startsWith("./") && !specifier.startsWith("../"))
 );
 if (externalImports.length > 0) {
-  fail(`Server has external imports: ${externalImports.map((item) => `${path.basename(item.filePath)}:${item.specifier}`).join(", ")}`);
+  fail(`Runtime or installer has external imports: ${externalImports.map((item) => `${path.basename(item.filePath)}:${item.specifier}`).join(", ")}`);
 }
 
 if (failures.length > 0) {

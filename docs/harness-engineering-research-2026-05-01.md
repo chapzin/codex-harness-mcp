@@ -4,7 +4,7 @@ This note compares the current `codex-harness-mcp` with public harness engineeri
 
 ## Current MCP baseline
 
-The current server exposes these 8 tools:
+The first implementation exposed 8 tools:
 
 - `harness_bootstrap`
 - `harness_create_contract`
@@ -36,6 +36,8 @@ Main gaps compared with stronger harness patterns:
 - No schema migrations or versioned harness state format beyond `state.version`.
 - No dashboards or export reports.
 - No project knowledge map generation.
+
+Current status: later releases expanded this into a broader local harness surface with resources, prompts, structured verification, persistent local RAG, eval/profile records, natural-language harness export, Meta-Harness-lite governance, observability reports, and multi-client MCP configuration.
 
 ## Examples reviewed
 
@@ -202,6 +204,7 @@ Implementation status:
 - 2026-05-02: Implemented natural-language harness export in server version `0.1.6`: `harness_export_nl_harness`, `harness://harness/spec`, and prompt-injection-bounded spec generation.
 - 2026-05-02: Implemented Meta-Harness-lite promotion records in server version `0.1.7`: harness proposals, promotion decisions, resources/prompts, natural-language spec sections, and state migration v5.
 - 2026-05-02: Implemented Gradient Flow inspired AgentOps observability in server version `0.1.8`: `harness_export_observability_report`, `harness://observability/report`, `harness_observability_review`, and report sections for traces, eval posture, memory, governance, safety, and blind spots.
+- 2026-05-02: Implemented multi-client MCP setup in server/package version `0.1.9`: safe config generation for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config.
 
 ## Source links
 

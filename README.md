@@ -1,22 +1,23 @@
 # Codex Harness MCP
 
-**A local harness-engineering control plane for Codex CLI.**
+**A local harness-engineering control plane for Codex CLI and MCP-compatible coding agents.**
 
 [View on skills.sh](https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp)
 
-`codex-harness-mcp` turns loose agent work into an auditable loop: define a bounded contract, query local project knowledge, record research and implementation lessons, capture raw traces, store verification evidence, export a trace-level observability report, compare harness profiles with eval runs, record harness-change proposals and promotion decisions, export the harness as natural-language control logic, and run a gate before claiming completion.
+`codex-harness-mcp` turns loose agent work into an auditable loop: define a bounded contract, query local project knowledge, record research and implementation lessons, capture raw traces, store verification evidence, export a trace-level observability report, compare harness profiles with eval runs, record harness-change proposals and promotion decisions, export the harness as natural-language control logic, and run a gate before claiming completion. It now ships a multi-client installer for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config.
 
 ![Codex Harness MCP loop](docs/assets/harness-loop.svg)
 
 ## At a glance
 
-| Area | What it gives Codex |
+| Area | What it gives MCP clients |
 | --- | --- |
 | Contracts | A small, explicit goal with budgets, permissions, expected outputs, and completion conditions. |
 | Persistent memory | Local RAG over research notes, implementation lessons, and project knowledge. |
 | Recovery | Raw traces and next-step recommendations after failures or uncertain work. |
 | Verification | Structured records for commands/manual checks run outside the MCP server. |
 | Observability | A local "flight recorder" report for contract state, traces, eval posture, memory, governance, safety, and blind spots. |
+| Multi-client setup | Safe config generation for major MCP coding clients without running their CLIs. |
 | Harness evals | Profiles, eval cases, eval runs, metrics, comparisons, and regressions. |
 | Meta-Harness-lite | Proposal and promotion records for harness changes, with optimization, holdout, regression, risk, and follow-up evidence. |
 | Natural-language harness | A portable markdown spec of roles, stages, tools, state semantics, failure taxonomy, and stop rules. |
@@ -33,11 +34,11 @@ Long-running agent work often fails in quiet ways:
 - harness changes are promoted without holdout evidence
 - "done" gets claimed before the work is actually checked
 
-This project gives Codex a durable system of record for that work. It does not replace Codex or run tasks for the agent. It gives Codex a local harness: state, contracts, memory, traces, eval records, promotion evidence, and completion gates.
+This project gives coding agents a durable system of record for that work. It does not replace the agent or run tasks for it. It gives MCP-capable clients a local harness: state, contracts, memory, traces, eval records, promotion evidence, and completion gates.
 
 Modern harness-engineering research points in the same direction: the orchestration around an LLM can change task performance dramatically. This MCP focuses on the practical, low-risk layer of that idea: make the loop explicit, make evidence durable, and make harness changes measurable before promoting them.
 
-This MCP gives Codex a small local control plane:
+This MCP gives Codex and compatible coding CLIs a small local control plane:
 
 - execution contracts before implementation
 - project-local RAG from research and implementation lessons
@@ -51,11 +52,12 @@ This MCP gives Codex a small local control plane:
 - compact handoff context for long sessions
 - explicit completion gates
 
-The goal is not to replace Codex. The goal is to give Codex a durable working memory and a safer operating loop.
+The goal is not to replace Codex, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, or other clients. The goal is to give them the same durable working memory and safer operating loop through MCP.
 
 ## What makes it different
 
 - **Local first:** all project state lives under `.codex-harness/`.
+- **Client portable:** installer can write the known MCP config shapes for the major coding clients.
 - **Scanner friendly:** the MCP server uses only Node.js built-in modules.
 - **No command execution:** verification is recorded, not executed by the MCP.
 - **Prompt-injection bounded:** stored user/source text is returned inside `<untrusted-data>` blocks.
@@ -71,10 +73,24 @@ Install the skill:
 npx skills add chapzin/codex-harness-mcp -g -a codex -y --copy
 ```
 
-Then run the bundled installer from the installed skill directory, or from this repository:
+Then run the bundled installer from the installed skill directory, or from this repository.
+
+Codex only:
 
 ```text
 node scripts/install-codex-harness-mcp.mjs
+```
+
+All supported MCP clients:
+
+```text
+node scripts/install-codex-harness-mcp.mjs --clients all --scope auto --project .
+```
+
+Specific clients:
+
+```text
+node scripts/install-codex-harness-mcp.mjs --clients codex,claude-code,opencode,kilo,gemini,cursor,vscode,cline,windsurf,roo --scope auto --project .
 ```
 
 Verify:
@@ -101,6 +117,25 @@ codex-harness  node  ~/.codex/mcp-servers/codex-harness-mcp/src/server.mjs
 8. If changing the harness itself, record profiles, evals, proposals, and promotion decisions.
 9. Run the completion gate before saying the work is done.
 
+## Supported clients
+
+The installer can generate configs for:
+
+- Codex CLI
+- Claude Code
+- OpenCode
+- Kilo CLI / Kilo Code
+- Gemini CLI
+- Cursor
+- VS Code / GitHub Copilot MCP
+- Cline
+- Windsurf Cascade
+- Roo Code
+
+See [Multi-client MCP setup](docs/multi-client-setup.md) for exact files and config shapes.
+
+Roo Code is included as a project-config best-effort target because the config shape is common in the ecosystem, but the official Roo Code docs currently announce product shutdown on May 15, 2026. Prefer Cline, VS Code/Copilot, Cursor, Claude Code, OpenCode, Kilo, or Gemini CLI for longer-lived setups.
+
 ## Start with this prompt
 
 ```text
@@ -119,7 +154,7 @@ For research-heavy implementation:
 Use codex-harness. Query local knowledge first. If missing or stale, research externally, store useful sources with harness_record_research, implement inside a small contract, record lessons, and gate completion with verification evidence.
 ```
 
-## What it adds to Codex
+## What it adds to MCP coding agents
 
 | Capability | What it solves |
 | --- | --- |
@@ -147,6 +182,7 @@ See the detailed compatibility analysis:
 - [Harness compatibility analysis - 2026-05-02](docs/harness-compatibility-analysis-2026-05-02.md)
 - [Gradient Flow AgentOps synthesis - 2026-05-02](docs/gradient-flow-agentops-synthesis-2026-05-02.md)
 - [Usage playbook](docs/usage-playbook.md)
+- [Multi-client MCP setup](docs/multi-client-setup.md)
 - [Harness engineering research notes](docs/harness-engineering-research-2026-05-01.md)
 - [Marketing launch kit](docs/marketing-launch-kit.md)
 
@@ -373,6 +409,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 | Version | Highlights |
 | --- | --- |
+| `0.1.9` | Multi-client MCP installer/config generator for Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code, Cline, Windsurf, and best-effort Roo project config. |
 | `0.1.8` | Trace-level observability report, AgentOps review prompt/resource, Gradient Flow guidance. |
 | `0.1.7` | Meta-Harness-lite proposals, promotion decisions, resources/prompts, state v5. |
 | `0.1.6` | Natural-language harness export and `harness://harness/spec`. |
@@ -384,7 +421,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry service.
 
-It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, observability reports, eval records, harness profiles, Meta-Harness-lite promotion records, natural-language spec export, resources, prompts, and gates.
+It is a small local harness for MCP coding clients: contracts, traces, local knowledge, verification records, observability reports, eval records, harness profiles, Meta-Harness-lite promotion records, natural-language spec export, resources, prompts, and gates.
 
 ## Development checks
 

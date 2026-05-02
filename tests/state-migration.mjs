@@ -35,6 +35,9 @@ try {
   if (!result.applied.includes("state-v3-knowledge-counters")) {
     throw new Error("Migration did not apply the v3 knowledge counter migration.");
   }
+  if (!result.applied.includes("state-v4-eval-profile-counters")) {
+    throw new Error("Migration did not apply the v4 eval/profile counter migration.");
+  }
 
   const state = await loadState(projectPath);
   if (state.version !== CURRENT_STATE_VERSION) {
@@ -45,6 +48,9 @@ try {
   }
   if (state.counters.knowledgeItems !== 0 || state.counters.knowledgeQueries !== 0) {
     throw new Error("Migrated state did not backfill knowledge counters.");
+  }
+  if (state.counters.evalCases !== 0 || state.counters.evalRuns !== 0 || state.counters.harnessProfiles !== 0) {
+    throw new Error("Migrated state did not backfill eval/profile counters.");
   }
 
   const migrationFiles = await fs.readdir(harnessPath(projectPath, "migrations"));

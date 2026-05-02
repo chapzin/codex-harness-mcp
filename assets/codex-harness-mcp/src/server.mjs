@@ -1,19 +1,27 @@
 #!/usr/bin/env node
 import {
   agentSafeContract,
+  agentSafeEvalCase,
+  agentSafeEvalRun,
   agentSafeGate,
+  agentSafeHarnessProfile,
   agentSafeState,
   agentSafeTrace,
   compactContext,
+  compareEvalRuns,
   createContract,
   ensureHarness,
   evalGate,
   listHarness,
+  listHarnessProfiles,
   listKnowledge,
   migrateHarness,
   nextStep,
   queryKnowledge,
   rebuildKnowledgeIndex,
+  recordEvalCase,
+  recordEvalRun,
+  recordHarnessProfile,
   recordImplementationLesson,
   recordKnowledge,
   recordResearchSource,
@@ -30,7 +38,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.4"
+  version: "0.1.5"
 };
 
 const stringArray = {
@@ -214,6 +222,121 @@ const tools = [
         entry: agentSafeTrace(result.entry)
       };
     }
+  },
+  {
+    name: "harness_record_harness_profile",
+    description: "Persist a named harness profile/mode so eval runs can compare minimal, standard, verifier-heavy, or custom harness behavior.",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        ...projectPathProperty,
+        name: { type: "string", minLength: 3 },
+        mode: {
+          type: "string",
+          enum: ["minimal", "standard", "verification_heavy", "research_heavy", "meta_harness_lite", "custom"]
+        },
+        summary: { type: "string" },
+        description: { type: "string" },
+        enabled_stages: stringArray,
+        disabled_stages: stringArray,
+        verifier_policy: { type: "string" },
+        budget_notes: { type: "string" },
+        tags: stringArray,
+        source_type: { type: "string" },
+        source_path: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordHarnessProfile
+  },
+  {
+    name: "harness_list_harness_profiles",
+    description: "List recent stored harness profiles for eval comparisons and harness simplification decisions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 20 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listHarnessProfiles
+  },
+  {
+    name: "harness_record_eval_case",
+    description: "Persist a tagged eval case that can be used to measure harness profiles, regressions, and holdout behavior.",
+    inputSchema: {
+      type: "object",
+      required: ["title"],
+      properties: {
+        ...projectPathProperty,
+        title: { type: "string", minLength: 3 },
+        task_family: { type: "string" },
+        split: { type: "string", enum: ["optimization", "holdout", "regression", "production", "unknown"] },
+        prompt: { type: "string" },
+        task: { type: "string" },
+        acceptance_criteria: stringArray,
+        expected_artifacts: stringArray,
+        verification_checks: stringArray,
+        tags: stringArray,
+        source_type: { type: "string" },
+        source_path: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordEvalCase
+  },
+  {
+    name: "harness_record_eval_run",
+    description: "Persist an externally-run eval result with model, harness profile, score, verdict, metrics, traces, and regressions.",
+    inputSchema: {
+      type: "object",
+      required: ["eval_case_id"],
+      properties: {
+        ...projectPathProperty,
+        eval_case_id: { type: "string", minLength: 1 },
+        harness_profile_id: { type: "string" },
+        model: { type: "string" },
+        provider: { type: "string" },
+        reasoning_effort: { type: "string" },
+        verdict: { type: "string", enum: ["pass", "fail", "unknown"] },
+        score: { type: "number" },
+        prompt_tokens: { type: "integer", minimum: 0 },
+        completion_tokens: { type: "integer", minimum: 0 },
+        total_tokens: { type: "integer", minimum: 0 },
+        cost_usd: { type: "number", minimum: 0 },
+        wall_clock_seconds: { type: "number", minimum: 0 },
+        tool_calls: { type: "integer", minimum: 0 },
+        llm_calls: { type: "integer", minimum: 0 },
+        trace_ids: stringArray,
+        verification_ids: stringArray,
+        regressions: stringArray,
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordEvalRun
+  },
+  {
+    name: "harness_compare_eval_runs",
+    description: "Compare two stored eval runs and report score, verdict, token, cost, time, and call deltas.",
+    inputSchema: {
+      type: "object",
+      required: ["baseline_run_id", "candidate_run_id"],
+      properties: {
+        ...projectPathProperty,
+        baseline_run_id: { type: "string", minLength: 1 },
+        candidate_run_id: { type: "string", minLength: 1 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: compareEvalRuns
   },
   {
     name: "harness_record_knowledge",

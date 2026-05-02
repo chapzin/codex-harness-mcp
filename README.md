@@ -1,8 +1,8 @@
 # Codex Harness MCP
 
-Contracts, local memory, traces, and completion gates for Codex CLI.
+Contracts, local memory, traces, eval profiles, and completion gates for Codex CLI.
 
-`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, and run a gate before saying the work is done.
+`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, compare harness profiles with eval runs, and run a gate before saying the work is done.
 
 ![Codex Harness MCP loop](docs/assets/harness-loop.svg)
 
@@ -16,6 +16,7 @@ This MCP gives Codex a small local control plane:
 - project-local RAG from research and implementation lessons
 - raw traces for attempts, failures, decisions, and verification
 - structured verification records
+- harness profiles and eval run comparisons
 - next-step recovery after a failure
 - compact handoff context for long sessions
 - explicit completion gates
@@ -62,13 +63,15 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 | Local knowledge RAG | Lets future sessions reuse project research and implementation lessons. |
 | Raw traces | Preserves the exact failure or verification signal for recovery. |
 | Verification records | Stores command output or manual checks without the MCP running shell commands. |
+| Eval cases and runs | Measures harness profile changes with score, verdict, cost, token, time, and regression metadata. |
+| Harness profiles | Lets Codex compare minimal, standard, verifier-heavy, research-heavy, and custom harness modes. |
 | Next-step recovery | Helps narrow the next attempt after failure instead of thrashing. |
 | Completion gates | Makes "done" an explicit evidence check, not a vibe. |
 | Handoff context | Produces compact restart context after compaction or session changes. |
 
 ## Harness research alignment
 
-The current implementation is aligned with modern harness-engineering practice around contracts, durable artifacts, trace-backed recovery, local knowledge, and explicit gates. It is intentionally a small local control plane, not a full benchmark runner or Meta-Harness optimizer.
+The current implementation is aligned with modern harness-engineering practice around contracts, durable artifacts, trace-backed recovery, local knowledge, eval records, and explicit gates. It is intentionally a small local control plane, not a full benchmark runner or autonomous Meta-Harness optimizer.
 
 See the detailed compatibility analysis:
 
@@ -85,6 +88,7 @@ User request
   -> implement inside contract boundaries
   -> record traces, research, and lessons
   -> record verification evidence
+  -> optionally record eval cases/runs for harness-profile changes
   -> evaluate completion gate
   -> compact handoff context when needed
 ```
@@ -99,6 +103,11 @@ Tools:
 - `harness_update_state`
 - `harness_record_trace`
 - `harness_record_verification`
+- `harness_record_harness_profile`
+- `harness_list_harness_profiles`
+- `harness_record_eval_case`
+- `harness_record_eval_run`
+- `harness_compare_eval_runs`
 - `harness_record_knowledge`
 - `harness_record_research`
 - `harness_record_lesson`
@@ -120,6 +129,12 @@ Resources:
 - `harness://knowledge/index`
 - `harness://knowledge/recent`
 - `harness://knowledge/item/{id}`
+- `harness://evals/cases`
+- `harness://evals/runs`
+- `harness://eval-case/{id}`
+- `harness://eval-run/{id}`
+- `harness://harness-profiles`
+- `harness://harness-profile/{id}`
 
 Prompts:
 
@@ -131,6 +146,10 @@ Prompts:
 - `harness_deep_research`
 - `harness_learn_from_implementation`
 - `harness_query_knowledge`
+- `harness_record_harness_profile`
+- `harness_record_eval_case`
+- `harness_record_eval_run`
+- `harness_compare_eval_runs`
 
 ## Local knowledge RAG
 
@@ -149,6 +168,18 @@ Use it like this:
 5. Future sessions retrieve that knowledge before planning.
 
 This is not a hosted vector database. It is a dependency-free lexical retrieval layer designed to be transparent, inspectable, and safe for local agent work.
+
+## Eval records and harness profiles
+
+Use eval records when changing the harness itself:
+
+1. Record the current profile with `harness_record_harness_profile`.
+2. Record a task or failure as an eval case with `harness_record_eval_case`.
+3. Run the eval outside the MCP.
+4. Store the result with `harness_record_eval_run`.
+5. Compare baseline and candidate runs with `harness_compare_eval_runs`.
+
+This keeps the MCP safe: it stores scores, costs, token counts, traces, and regressions, but it does not execute benchmark commands or generated harness code.
 
 ## Security model
 
@@ -172,7 +203,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry layer.
 
-It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, resources, prompts, and gates.
+It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, resources, prompts, and gates.
 
 ## Development checks
 
@@ -189,3 +220,4 @@ Key guardrails:
 - prompt-injection boundaries enforced
 - resources and prompts exposed safely
 - persistent knowledge RAG queryable locally
+- eval/profile records persist without command execution

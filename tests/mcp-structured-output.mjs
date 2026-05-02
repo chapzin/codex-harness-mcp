@@ -30,7 +30,12 @@ for (const marker of [
   "harness_record_lesson",
   "harness_record_knowledge",
   "harness_query_knowledge",
-  "harness_rebuild_knowledge_index"
+  "harness_rebuild_knowledge_index",
+  "harness_record_eval_case",
+  "harness_record_eval_run",
+  "harness_compare_eval_runs",
+  "harness_record_harness_profile",
+  "harness_list_harness_profiles"
 ]) {
   if (!serverText.includes(marker)) {
     throw new Error(`Server is missing MCP protocol marker: ${marker}`);

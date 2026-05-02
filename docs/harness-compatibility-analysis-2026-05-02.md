@@ -11,7 +11,8 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Strong fit for contracts, durable state, local knowledge, traces, verification evidence, completion gates, and handoff context.
 - Partial fit for natural-language harness representation because the user-facing skill and prompts are natural-language artifacts, while much of the actual orchestration is still encoded in JavaScript tools and schemas.
 - Partial fit for safety enforcement because the MCP itself avoids shell execution and remote dependencies, but it does not enforce all Codex CLI actions at runtime.
-- Missing the evaluation and optimization layer required for ablations, compute comparisons, cross-model transfer tests, and automated harness search.
+- Now has a local evaluation record layer for harness profiles, eval cases, eval runs, and run comparisons.
+- Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
 Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until eval-run, ablation, telemetry, and harness-version search features exist.
 
@@ -28,7 +29,7 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 | Completion gates | Strong as audit trail, partial as optimizer | `harness_eval_gate` records checked/unchecked conditions and evidence | No ablation to prove whether verifier/gate cost helps or hurts a task family. |
 | Natural-language harness representation | Partial | Skill instructions and MCP prompts express the loop in natural language | Runtime logic is not exported as a portable, executable NLAH-style artifact. |
 | Intelligent Harness Runtime style execution | Partial | MCP exposes tools/resources/prompts and persistent artifacts | No in-loop child-agent lifecycle, adapter registry, or runtime charter comparable to IHR. |
-| Meta-Harness style optimization | Foundational only | Full-history files, traces, scores could be added, knowledge can persist lessons | No eval runs, score storage, candidate harness versions, proposer loop, or compare-runs tool. |
+| Meta-Harness style optimization | Partial foundation | Full-history files, traces, knowledge, harness profiles, eval cases, eval runs, and compare-runs records | No automated proposer loop, benchmark runner, source snapshotting, or promotion workflow yet. |
 | AutoHarness style generated harness/code policy | Missing | Current MCP intentionally does not synthesize or execute harness code | Could add proposal records, but should not auto-run generated code inside the MCP. |
 | AgentSpec style runtime enforcement | Partial | Server has strict no-shell/no-remote behavior and untrusted data boundaries | No policy DSL for Codex actions, sensitive path globs, or enforceable action blocking outside MCP writes. |
 | Anthropic long-running agent pattern | Strong core, partial workflow | Bootstrap, contracts, progress traces, handoff context, verification evidence | No structured feature list, one-feature queue, git-progress integration, or initializer/coding role split. |
@@ -39,21 +40,21 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 
 ### Same model, same benchmark, 6x performance gap
 
-Compatible in principle. The repo accepts the central idea that the harness layer matters, and it gives Codex a stable working loop. It does not yet measure performance gaps because it has no eval case model, no benchmark runner, and no per-run score/cost ledger.
+Compatible in local-record form. The repo accepts the central idea that the harness layer matters, gives Codex a stable working loop, and now stores eval cases, eval runs, harness profiles, scores, token/cost/time metrics, and regressions. It still does not run benchmarks itself.
 
-Required improvement: add eval-run records with model, harness version, task id, score, tokens, wall-clock time, tool calls, and cost estimates.
+Remaining improvement: add an external benchmark runner workflow or export format so these records can be produced repeatably.
 
 ### LangChain jumped by changing only harness infrastructure
 
-Partially compatible. The skill already has the raw ingredients LangChain emphasizes: traces, self-verification evidence, local context, and repeatable skill instructions. It lacks the experiment loop: tagged evals, baseline runs, holdout runs, and targeted harness changes.
+Partially compatible. The skill already has the raw ingredients LangChain emphasizes: traces, self-verification evidence, local context, repeatable skill instructions, tagged eval cases, baseline/candidate run records, and run comparisons. It lacks automated sourcing, holdout execution, and targeted harness-change proposal.
 
-Required improvement: add `harness_record_eval_case`, `harness_record_eval_run`, and `harness_compare_eval_runs`.
+Remaining improvement: add trace mining and promotion gates that turn failures into curated eval cases automatically.
 
 ### Full vs stripped harness achieved similar pass rate with much different compute
 
-Not yet compatible. The skill currently has one default operating loop. It encourages small contracts, but it cannot compare "full" and "stripped" harness variants or quantify overhead.
+Partially compatible. The skill now supports named harness profiles and eval-run comparisons, so a user can record "full" and "stripped" runs and compare score, token, cost, time, tool-call, and LLM-call deltas. It does not execute those variants automatically.
 
-Required improvement: add harness profiles or modes such as `minimal`, `standard`, `verification-heavy`, and record compute/cost for each run.
+Remaining improvement: add a profile export/runner contract so external Codex sessions can run the same eval case under each profile consistently.
 
 ### Verifier modules can hurt performance
 
@@ -69,15 +70,15 @@ Required improvement: expose `harness://harness/spec` and a prompt/tool that exp
 
 ### Meta-Harness can optimize harness code end-to-end
 
-Foundational only. The repo persists traces and knowledge, which are prerequisites for a Meta-Harness-like loop. It does not yet store candidate harness versions, benchmark scores, source snapshots, or proposer decisions.
+Partial foundation. The repo persists traces, knowledge, harness profiles, eval cases, eval runs, benchmark scores, costs, and regressions. It does not yet store source snapshots, proposer decisions, or run an optimizer.
 
-Required improvement: add "Meta-Harness-lite" records first: candidate name, changed harness instructions/config, task set, score, regressions, and lessons. Keep execution outside the MCP to preserve the no-command-execution security posture.
+Remaining improvement: add "Meta-Harness-lite" promotion records: candidate change summary, source snapshot path, task set, holdout result, promotion decision, and lessons. Keep execution outside the MCP to preserve the no-command-execution security posture.
 
 ### Harness transfers across models
 
-Not yet proven. The MCP is model-agnostic because it is local and does not call models, but there is no cross-model test suite or model profile layer.
+Not yet proven. The MCP is model-agnostic because it is local and does not call models, and eval runs now store model/provider/reasoning metadata. There is still no cross-model test suite or model-specific profile runner.
 
-Required improvement: record model/provider/reasoning metadata on eval runs and support model-specific harness notes without changing the core server.
+Remaining improvement: add model-specific profile notes and cross-model comparison reports.
 
 ### Remove structure rather than always adding it
 
@@ -96,7 +97,9 @@ Required improvement: add a default rule: if structure does not improve acceptan
 
 ### P1 - Evaluation data model
 
-Add tools and local files for:
+Status: implemented in v0.1.5 as local records and comparisons.
+
+Added tools and local files for:
 
 - `harness_record_eval_case`
 - `harness_record_eval_run`
@@ -113,6 +116,12 @@ Suggested fields:
 - token/cost/wall-clock/tool-call metrics, if available
 - trace ids and verification evidence
 - regressions and holdout status
+
+Remaining P1 follow-up:
+
+- add trace mining into eval-case proposals
+- add holdout/promotion reports
+- add export/import for external benchmark runners
 
 ### P2 - Natural-language harness export
 

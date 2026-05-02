@@ -15,7 +15,9 @@ import {
   exportNaturalLanguageHarness,
   listHarness,
   listHarnessProfiles,
+  listHarnessProposals,
   listKnowledge,
+  listPromotionDecisions,
   migrateHarness,
   nextStep,
   queryKnowledge,
@@ -23,8 +25,10 @@ import {
   recordEvalCase,
   recordEvalRun,
   recordHarnessProfile,
+  recordHarnessProposal,
   recordImplementationLesson,
   recordKnowledge,
+  recordPromotionDecision,
   recordResearchSource,
   recordVerification,
   recordTrace,
@@ -39,7 +43,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.6"
+  version: "0.1.7"
 };
 
 const stringArray = {
@@ -338,6 +342,89 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: compareEvalRuns
+  },
+  {
+    name: "harness_record_harness_proposal",
+    description: "Persist a Meta-Harness-lite proposal for a measured harness change before promotion.",
+    inputSchema: {
+      type: "object",
+      required: ["title", "proposed_change"],
+      properties: {
+        ...projectPathProperty,
+        title: { type: "string", minLength: 3 },
+        hypothesis: { type: "string" },
+        proposed_change: { type: "string", minLength: 3 },
+        status: {
+          type: "string",
+          enum: ["proposed", "testing", "accepted", "rejected", "superseded", "unknown"]
+        },
+        risk_level: { type: "string", enum: ["low", "medium", "high", "unknown"] },
+        target_profile_id: { type: "string" },
+        baseline_run_ids: stringArray,
+        candidate_run_ids: stringArray,
+        holdout_run_ids: stringArray,
+        regression_run_ids: stringArray,
+        expected_gain: { type: "string" },
+        affected_stages: stringArray,
+        evidence: stringArray,
+        source_trace_ids: stringArray,
+        tags: stringArray
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordHarnessProposal
+  },
+  {
+    name: "harness_list_harness_proposals",
+    description: "List recent Meta-Harness-lite proposals for measured harness changes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 20 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listHarnessProposals
+  },
+  {
+    name: "harness_record_promotion_decision",
+    description: "Persist a promote/reject/hold decision for a harness proposal with holdout, regression, risk, and follow-up evidence.",
+    inputSchema: {
+      type: "object",
+      required: ["proposal_id", "decision", "rationale"],
+      properties: {
+        ...projectPathProperty,
+        proposal_id: { type: "string", minLength: 1 },
+        decision: { type: "string", enum: ["promote", "reject", "hold", "needs_more_evidence"] },
+        rationale: { type: "string", minLength: 3 },
+        optimization_run_ids: stringArray,
+        holdout_run_ids: stringArray,
+        regression_run_ids: stringArray,
+        accepted_risks: stringArray,
+        follow_up: { type: "string" },
+        evidence: stringArray
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordPromotionDecision
+  },
+  {
+    name: "harness_list_promotion_decisions",
+    description: "List recent harness promotion decisions for audit, regression review, and rollback planning.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 20 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listPromotionDecisions
   },
   {
     name: "harness_export_nl_harness",

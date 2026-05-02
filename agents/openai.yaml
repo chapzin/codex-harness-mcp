@@ -1,8 +1,8 @@
 interface:
   display_name: "Codex Harness MCP"
-  short_description: "Contracts, memory, evals, and harness specs for Codex"
+  short_description: "Contracts, memory, evals, proposals, and harness specs"
   brand_color: "#2563EB"
-  default_prompt: "Use $codex-harness-mcp to query local knowledge, create a small contract, record traces/evals, export the harness spec if useful, and run the gate before completion."
+  default_prompt: "Use $codex-harness-mcp to query local knowledge, create a small contract, record traces/evals/proposals when useful, export the harness spec, and run the gate before completion."
 
 policy:
   allow_implicit_invocation: true

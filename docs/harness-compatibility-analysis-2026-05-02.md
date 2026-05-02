@@ -13,9 +13,10 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Partial fit for safety enforcement because the MCP itself avoids shell execution and remote dependencies, but it does not enforce all Codex CLI actions at runtime.
 - Now has a local evaluation record layer for harness profiles, eval cases, eval runs, and run comparisons.
 - Now exports the current harness as a natural-language spec with roles, stages, adapters, state semantics, failure taxonomy, and stop rules.
+- Now has a safe Meta-Harness-lite layer for recording harness-change proposals and promotion decisions with baseline, candidate, holdout, regression, risk, and follow-up evidence.
 - Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
-Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until eval-run, ablation, telemetry, and harness-version search features exist.
+Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until ablation runners, telemetry, cross-model transfer checks, and harness-version search features exist.
 
 ## Compatibility scorecard
 
@@ -30,11 +31,11 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 | Completion gates | Strong as audit trail, partial as optimizer | `harness_eval_gate` records checked/unchecked conditions and evidence | No ablation to prove whether verifier/gate cost helps or hurts a task family. |
 | Natural-language harness representation | Partial-to-strong | Skill instructions, prompts, and `harness://harness/spec` expose roles, stages, adapters, state semantics, failure taxonomy, and stop rules | The spec is portable/readable, but not yet executable by a shared IHR-style runtime. |
 | Intelligent Harness Runtime style execution | Partial | MCP exposes tools/resources/prompts and persistent artifacts | No in-loop child-agent lifecycle, adapter registry, or runtime charter comparable to IHR. |
-| Meta-Harness style optimization | Partial foundation | Full-history files, traces, knowledge, harness profiles, eval cases, eval runs, and compare-runs records | No automated proposer loop, benchmark runner, source snapshotting, or promotion workflow yet. |
+| Meta-Harness style optimization | Partial-to-strong local evidence layer | Full-history files, traces, knowledge, harness profiles, eval cases, eval runs, compare-runs records, `harness_record_harness_proposal`, and `harness_record_promotion_decision` | No automated proposer loop, benchmark runner, source snapshotting, or generated-harness execution. |
 | AutoHarness style generated harness/code policy | Missing | Current MCP intentionally does not synthesize or execute harness code | Could add proposal records, but should not auto-run generated code inside the MCP. |
 | AgentSpec style runtime enforcement | Partial | Server has strict no-shell/no-remote behavior and untrusted data boundaries | No policy DSL for Codex actions, sensitive path globs, or enforceable action blocking outside MCP writes. |
 | Anthropic long-running agent pattern | Strong core, partial workflow | Bootstrap, contracts, progress traces, handoff context, verification evidence | No structured feature list, one-feature queue, git-progress integration, or initializer/coding role split. |
-| LangChain harness engineering pattern | Partial | Traces, verification, environment/context notes via contracts and RAG | Missing metrics for tokens, latency, cost, tool calls, eval cases, holdouts, and model profiles. |
+| LangChain harness engineering pattern | Partial-to-strong local record layer | Traces, verification, environment/context notes via contracts and RAG, token/cost/time/tool-call metrics in eval runs, holdout/proposal records | No automatic trace analysis, runner integration, or loop detection yet. |
 | OpenAI agent-legible repo pattern | Strong direction | Local docs, no runtime dependencies, inspectable MCP implementation | No docs freshness lint, architecture lint, or doc-gardening workflow. |
 
 ## Fit against the user's key claims
@@ -47,9 +48,9 @@ Remaining improvement: add an external benchmark runner workflow or export forma
 
 ### LangChain jumped by changing only harness infrastructure
 
-Partially compatible. The skill already has the raw ingredients LangChain emphasizes: traces, self-verification evidence, local context, repeatable skill instructions, tagged eval cases, baseline/candidate run records, and run comparisons. It lacks automated sourcing, holdout execution, and targeted harness-change proposal.
+Partially compatible. The skill already has the raw ingredients LangChain emphasizes: traces, self-verification evidence, local context, repeatable skill instructions, tagged eval cases, baseline/candidate run records, run comparisons, and targeted harness-change proposal records. It lacks automated sourcing and holdout execution.
 
-Remaining improvement: add trace mining and promotion gates that turn failures into curated eval cases automatically.
+Remaining improvement: add trace mining that turns failures into curated eval cases automatically.
 
 ### Full vs stripped harness achieved similar pass rate with much different compute
 
@@ -71,9 +72,9 @@ Remaining improvement: make the exported spec executable by a shared runtime and
 
 ### Meta-Harness can optimize harness code end-to-end
 
-Partial foundation. The repo persists traces, knowledge, harness profiles, eval cases, eval runs, benchmark scores, costs, and regressions. It does not yet store source snapshots, proposer decisions, or run an optimizer.
+Partial foundation with a useful local promotion layer. The repo persists traces, knowledge, harness profiles, eval cases, eval runs, benchmark scores, costs, regressions, harness-change proposals, and promotion decisions. It does not yet store source snapshots or run an optimizer.
 
-Remaining improvement: add "Meta-Harness-lite" promotion records: candidate change summary, source snapshot path, task set, holdout result, promotion decision, and lessons. Keep execution outside the MCP to preserve the no-command-execution security posture.
+Remaining improvement: add optional source snapshot paths, trace-mined proposal candidates, and external runner export/import. Keep execution outside the MCP to preserve the no-command-execution security posture.
 
 ### Harness transfers across models
 
@@ -152,7 +153,20 @@ Remaining P2 follow-up:
 
 ### P3 - Meta-Harness-lite improvement loop
 
-Add a safe, non-executing loop:
+Status: implemented in v0.1.7 as local proposal and promotion-decision records.
+
+Added tools and resources:
+
+- `harness_record_harness_proposal`
+- `harness_list_harness_proposals`
+- `harness_record_promotion_decision`
+- `harness_list_promotion_decisions`
+- `harness://harness-proposals`
+- `harness://harness-proposal/{id}`
+- `harness://promotion-decisions`
+- `harness://promotion-decision/{id}`
+
+The implemented loop is deliberately non-executing:
 
 1. Mine traces and eval results.
 2. Record a proposed harness change.

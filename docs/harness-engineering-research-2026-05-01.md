@@ -200,6 +200,7 @@ Implementation status:
 - 2026-05-02: Implemented persistent local knowledge/RAG in server version `0.1.4`: research capture, implementation lessons, lexical retrieval, knowledge resources/prompts, and state migration v3.
 - 2026-05-02: Implemented local harness eval/profile records in server version `0.1.5`: harness profiles, eval cases, eval runs, run comparisons, eval/profile resources and prompts, and state migration v4.
 - 2026-05-02: Implemented natural-language harness export in server version `0.1.6`: `harness_export_nl_harness`, `harness://harness/spec`, and prompt-injection-bounded spec generation.
+- 2026-05-02: Implemented Meta-Harness-lite promotion records in server version `0.1.7`: harness proposals, promotion decisions, resources/prompts, natural-language spec sections, and state migration v5.
 
 ## Source links
 

@@ -36,6 +36,10 @@ for (const marker of [
   "harness_compare_eval_runs",
   "harness_record_harness_profile",
   "harness_list_harness_profiles",
+  "harness_record_harness_proposal",
+  "harness_list_harness_proposals",
+  "harness_record_promotion_decision",
+  "harness_list_promotion_decisions",
   "harness_export_nl_harness"
 ]) {
   if (!serverText.includes(marker)) {

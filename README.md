@@ -1,8 +1,8 @@
 # Codex Harness MCP
 
-Contracts, local memory, traces, eval profiles, and completion gates for Codex CLI.
+Contracts, local memory, traces, eval profiles, Meta-Harness-lite promotion evidence, and completion gates for Codex CLI.
 
-`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, compare harness profiles with eval runs, export the harness as natural-language control logic, and run a gate before saying the work is done.
+`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, compare harness profiles with eval runs, record harness-change proposals and promotion decisions, export the harness as natural-language control logic, and run a gate before saying the work is done.
 
 ![Codex Harness MCP loop](docs/assets/harness-loop.svg)
 
@@ -17,6 +17,7 @@ This MCP gives Codex a small local control plane:
 - raw traces for attempts, failures, decisions, and verification
 - structured verification records
 - harness profiles and eval run comparisons
+- Meta-Harness-lite proposal and promotion-decision records
 - natural-language harness spec export
 - next-step recovery after a failure
 - compact handoff context for long sessions
@@ -53,7 +54,7 @@ codex-harness  node  ~/.codex/mcp-servers/codex-harness-mcp/src/server.mjs
 ## Start with this prompt
 
 ```text
-Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, and run the eval gate before saying the task is done.
+Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, record eval/profile/proposal evidence if changing the harness, and run the eval gate before saying the task is done.
 ```
 
 ## What it adds to Codex
@@ -66,6 +67,7 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 | Verification records | Stores command output or manual checks without the MCP running shell commands. |
 | Eval cases and runs | Measures harness profile changes with score, verdict, cost, token, time, and regression metadata. |
 | Harness profiles | Lets Codex compare minimal, standard, verifier-heavy, research-heavy, and custom harness modes. |
+| Meta-Harness-lite records | Stores proposed harness changes, expected gains, baseline/candidate/holdout evidence, accepted risks, and promotion decisions. |
 | Natural-language harness spec | Exports roles, stages, adapters, state semantics, failure taxonomy, and stop rules as a portable markdown spec. |
 | Next-step recovery | Helps narrow the next attempt after failure instead of thrashing. |
 | Completion gates | Makes "done" an explicit evidence check, not a vibe. |
@@ -73,7 +75,7 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 
 ## Harness research alignment
 
-The current implementation is aligned with modern harness-engineering practice around contracts, durable artifacts, trace-backed recovery, local knowledge, eval records, and explicit gates. It is intentionally a small local control plane, not a full benchmark runner or autonomous Meta-Harness optimizer.
+The current implementation is aligned with modern harness-engineering practice around contracts, durable artifacts, trace-backed recovery, local knowledge, eval records, Meta-Harness-lite promotion evidence, natural-language harness export, and explicit gates. It is intentionally a small local control plane, not a full benchmark runner or autonomous Meta-Harness optimizer.
 
 See the detailed compatibility analysis:
 
@@ -91,6 +93,7 @@ User request
   -> record traces, research, and lessons
   -> record verification evidence
   -> optionally record eval cases/runs for harness-profile changes
+  -> record harness proposal and promotion decision when optimizing the harness
   -> export natural-language harness spec when sharing or porting the loop
   -> evaluate completion gate
   -> compact handoff context when needed
@@ -111,6 +114,10 @@ Tools:
 - `harness_record_eval_case`
 - `harness_record_eval_run`
 - `harness_compare_eval_runs`
+- `harness_record_harness_proposal`
+- `harness_list_harness_proposals`
+- `harness_record_promotion_decision`
+- `harness_list_promotion_decisions`
 - `harness_export_nl_harness`
 - `harness_record_knowledge`
 - `harness_record_research`
@@ -139,6 +146,10 @@ Resources:
 - `harness://eval-run/{id}`
 - `harness://harness-profiles`
 - `harness://harness-profile/{id}`
+- `harness://harness-proposals`
+- `harness://harness-proposal/{id}`
+- `harness://promotion-decisions`
+- `harness://promotion-decision/{id}`
 - `harness://harness/spec`
 
 Prompts:
@@ -155,6 +166,9 @@ Prompts:
 - `harness_record_eval_case`
 - `harness_record_eval_run`
 - `harness_compare_eval_runs`
+- `harness_propose_harness_change`
+- `harness_record_promotion_decision`
+- `harness_meta_harness_review`
 - `harness_export_nl_harness`
 
 ## Local knowledge RAG
@@ -187,6 +201,19 @@ Use eval records when changing the harness itself:
 
 This keeps the MCP safe: it stores scores, costs, token counts, traces, and regressions, but it does not execute benchmark commands or generated harness code.
 
+## Meta-Harness-lite promotion loop
+
+Use proposal and promotion records when optimizing the harness itself:
+
+1. Record baseline and candidate profiles.
+2. Record optimization, holdout, or regression eval cases.
+3. Run evals outside the MCP.
+4. Store eval results with `harness_record_eval_run`.
+5. Record the proposed harness change with `harness_record_harness_proposal`.
+6. Promote, reject, hold, or ask for more evidence with `harness_record_promotion_decision`.
+
+This captures the useful part of Meta-Harness practice without letting the MCP execute generated code or benchmark commands.
+
 ## Natural-language harness spec
 
 Use `harness_export_nl_harness` or read `harness://harness/spec` when you want the current harness logic as a portable artifact. The export includes:
@@ -199,6 +226,7 @@ Use `harness_export_nl_harness` or read `harness://harness/spec` when you want t
 - failure taxonomy
 - retry and stop rules
 - current project snapshot
+- recent proposals and promotion decisions
 
 Stored project data remains inside `<untrusted-data>` blocks.
 
@@ -242,4 +270,5 @@ Key guardrails:
 - resources and prompts exposed safely
 - persistent knowledge RAG queryable locally
 - eval/profile records persist without command execution
+- Meta-Harness-lite proposal/promotion records persist without command execution
 - natural-language harness spec export remains prompt-injection bounded

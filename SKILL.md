@@ -1,7 +1,7 @@
 ---
 name: codex-harness-mcp
 displayName: "Codex Harness MCP - Contracts, Memory, Gates"
-description: Use this skill when a user wants Codex CLI to work through a harness-engineering loop with explicit execution contracts, local persistent knowledge/RAG from research and implementation lessons, durable traces, structured verification evidence, harness profiles, eval cases/runs, MCP resources/prompts, compact handoff context, and completion gates before claiming work is done. Triggers on requests for codex-harness, harness engineering, agent harness, persistent project memory, local RAG for Codex, deep research memory, implementation learning, benchmark/eval records, harness profile comparison, next-step recovery, or proof-backed completion gates.
+description: Use this skill when a user wants Codex CLI to work through a harness-engineering loop with explicit execution contracts, local persistent knowledge/RAG from research and implementation lessons, durable traces, structured verification evidence, harness profiles, eval cases/runs, natural-language harness spec export, MCP resources/prompts, compact handoff context, and completion gates before claiming work is done. Triggers on requests for codex-harness, harness engineering, agent harness, natural-language agent harnesses, persistent project memory, local RAG for Codex, deep research memory, implementation learning, benchmark/eval records, harness profile comparison, next-step recovery, or proof-backed completion gates.
 license: MIT
 compatibility: Requires Node.js 20+ and Codex CLI. The bundled installer registers a dependency-free local stdio MCP server by updating Codex config.toml.
 ---
@@ -10,7 +10,7 @@ compatibility: Requires Node.js 20+ and Codex CLI. The bundled installer registe
 
 Give Codex a local harness instead of a loose prompt.
 
-`codex-harness-mcp` adds a project-local control plane for Codex CLI: contracts before implementation, persistent knowledge from research and implementation lessons, raw traces, structured verification evidence, harness profiles, eval records, next-step recovery, compact handoff context, and explicit gates before claiming completion.
+`codex-harness-mcp` adds a project-local control plane for Codex CLI: contracts before implementation, persistent knowledge from research and implementation lessons, raw traces, structured verification evidence, harness profiles, eval records, natural-language harness spec export, next-step recovery, compact handoff context, and explicit gates before claiming completion.
 
 It is designed for long-running coding, research, audit, and refactor work where the agent needs to remember what happened, reuse what it learned, and prove the result before saying "done".
 
@@ -25,6 +25,7 @@ Use this skill when the user asks for:
 - learning from implementations or failures
 - benchmark/eval records for harness changes
 - comparing minimal, standard, verifier-heavy, or custom harness profiles
+- exporting the harness loop as a portable natural-language spec
 - trace-backed recovery after failed attempts
 - explicit verification gates before completion
 - compact handoff context for long sessions
@@ -50,7 +51,7 @@ codex mcp list
 ## Good starting prompt
 
 ```text
-Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, record eval/profile evidence if changing the harness, and run the eval gate before saying the task is done.
+Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, record eval/profile evidence if changing the harness, export the natural-language harness spec when sharing the loop, and run the eval gate before saying the task is done.
 ```
 
 ## Operating loop
@@ -65,9 +66,10 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 8. Call `harness_record_trace` after attempts, failures, successes, and decisions.
 9. Prefer `harness_record_verification` when recording command output, manual checks, or verifier results.
 10. When changing the harness itself, record a profile, eval case, eval run, and comparison with the eval tools.
-11. Call `harness_next_step` when the next action is unclear or after a failure.
-12. Call `harness_eval_gate` before claiming completion.
-13. Call `harness_compact_context` when handing off or resuming a long task.
+11. Call `harness_export_nl_harness` when sharing, porting, or reviewing the harness logic.
+12. Call `harness_next_step` when the next action is unclear or after a failure.
+13. Call `harness_eval_gate` before claiming completion.
+14. Call `harness_compact_context` when handing off or resuming a long task.
 
 ## Tool guide
 
@@ -84,6 +86,7 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 | `harness_record_eval_case` | Store a tagged eval case with acceptance criteria and verification checks. |
 | `harness_record_eval_run` | Store an externally run eval result with model, score, verdict, metrics, traces, and regressions. |
 | `harness_compare_eval_runs` | Compare two eval runs before promoting a harness change. |
+| `harness_export_nl_harness` | Export the current harness as a portable natural-language spec. |
 | `harness_record_knowledge` | Store a generic local knowledge item for future retrieval. |
 | `harness_record_research` | Store a research source or finding in the local knowledge index. |
 | `harness_record_lesson` | Store an implementation lesson learned from a fix, failure, or completed feature. |
@@ -113,6 +116,7 @@ Resources:
 - `harness://eval-run/{id}`
 - `harness://harness-profiles`
 - `harness://harness-profile/{id}`
+- `harness://harness/spec`
 
 Prompts:
 
@@ -128,6 +132,7 @@ Prompts:
 - `harness_record_eval_case`
 - `harness_record_eval_run`
 - `harness_compare_eval_runs`
+- `harness_export_nl_harness`
 
 ## Default behavior
 
@@ -136,6 +141,7 @@ Prompts:
 - Store useful research with `harness_record_research`.
 - Store reusable implementation learning with `harness_record_lesson`.
 - Store eval/profile evidence when changing harness behavior.
+- Export the natural-language harness spec when the user wants to share, review, compare, or port the harness.
 - Keep raw traces detailed; summaries lose recovery signal.
 - Record verification evidence, but run commands outside the MCP server.
 - Treat completion as gated evidence, not a conversational claim.
@@ -163,4 +169,4 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries. Tre
 
 Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser automation tool. Not a telemetry layer.
 
-It is a small local control plane for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, resources, prompts, and gates.
+It is a small local control plane for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, natural-language spec export, resources, prompts, and gates.

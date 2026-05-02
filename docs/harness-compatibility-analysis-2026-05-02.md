@@ -12,6 +12,7 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Partial fit for natural-language harness representation because the user-facing skill and prompts are natural-language artifacts, while much of the actual orchestration is still encoded in JavaScript tools and schemas.
 - Partial fit for safety enforcement because the MCP itself avoids shell execution and remote dependencies, but it does not enforce all Codex CLI actions at runtime.
 - Now has a local evaluation record layer for harness profiles, eval cases, eval runs, and run comparisons.
+- Now exports the current harness as a natural-language spec with roles, stages, adapters, state semantics, failure taxonomy, and stop rules.
 - Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
 Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until eval-run, ablation, telemetry, and harness-version search features exist.
@@ -20,14 +21,14 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 
 | Dimension | Status | Evidence in this repo | Gap |
 | --- | --- | --- | --- |
-| Harness as a first-class asset | Partial | `SKILL.md`, MCP prompts, resources, local `.codex-harness/` artifacts | No single exported natural-language harness spec with roles, stages, adapters, state semantics, and failure taxonomy. |
+| Harness as a first-class asset | Strong foundation | `SKILL.md`, MCP prompts, resources, local `.codex-harness/` artifacts, `harness_export_nl_harness`, `harness://harness/spec` | Export is deterministic and local; not yet executed by an independent IHR-style runtime. |
 | Explicit execution contracts | Strong | `harness_create_contract` stores goals, budgets, permissions, outputs, verification commands, completion conditions, failure taxonomy | Contracts are per-task, not yet composed into benchmark/eval cases. |
 | File-backed durable state | Strong | `.codex-harness/state.json`, contracts, traces, gates, decisions, knowledge | No task graph, feature list, or sprint/task queue yet. |
 | Compaction and handoff support | Strong | `harness_compact_context`, recent traces, state summaries | No automatic stale-state or post-gate drift detection. |
 | Local project RAG and implementation learning | Strong | `harness_record_research`, `harness_record_lesson`, `harness_query_knowledge`, knowledge resources | Lexical retrieval only; no eval-driven quality curation or holdout split. |
 | Raw trace preservation | Strong | `harness_record_trace`, `harness_record_verification`, recent trace resources | No trace clustering, failure mining, regression generation, or harness-change diagnosis. |
 | Completion gates | Strong as audit trail, partial as optimizer | `harness_eval_gate` records checked/unchecked conditions and evidence | No ablation to prove whether verifier/gate cost helps or hurts a task family. |
-| Natural-language harness representation | Partial | Skill instructions and MCP prompts express the loop in natural language | Runtime logic is not exported as a portable, executable NLAH-style artifact. |
+| Natural-language harness representation | Partial-to-strong | Skill instructions, prompts, and `harness://harness/spec` expose roles, stages, adapters, state semantics, failure taxonomy, and stop rules | The spec is portable/readable, but not yet executable by a shared IHR-style runtime. |
 | Intelligent Harness Runtime style execution | Partial | MCP exposes tools/resources/prompts and persistent artifacts | No in-loop child-agent lifecycle, adapter registry, or runtime charter comparable to IHR. |
 | Meta-Harness style optimization | Partial foundation | Full-history files, traces, knowledge, harness profiles, eval cases, eval runs, and compare-runs records | No automated proposer loop, benchmark runner, source snapshotting, or promotion workflow yet. |
 | AutoHarness style generated harness/code policy | Missing | Current MCP intentionally does not synthesize or execute harness code | Could add proposal records, but should not auto-run generated code inside the MCP. |
@@ -64,9 +65,9 @@ Required improvement: make verification evidence-first and task-fit-based. A ver
 
 ### Natural-language harnesses outperform brittle code harnesses
 
-Partially compatible. `SKILL.md` and MCP prompts already expose the operating loop as natural language, and stored contract/handoff files are agent-readable. However, the full harness is not yet externalized as a portable NLAH object. The JavaScript runtime still owns the real tool semantics and next-step logic.
+Mostly compatible at the representation layer. `SKILL.md`, MCP prompts, stored contract/handoff files, and `harness://harness/spec` expose the operating loop as natural language. The JavaScript runtime still owns deterministic tool semantics and next-step logic.
 
-Required improvement: expose `harness://harness/spec` and a prompt/tool that exports the current harness as a natural-language spec with contracts, roles, stages, adapters, state semantics, and failure taxonomy.
+Remaining improvement: make the exported spec executable by a shared runtime and add profile-specific exports.
 
 ### Meta-Harness can optimize harness code end-to-end
 
@@ -125,12 +126,12 @@ Remaining P1 follow-up:
 
 ### P2 - Natural-language harness export
 
-Add:
+Status: implemented in v0.1.6 as a deterministic local export.
+
+Added:
 
 - `harness://harness/spec`
 - `harness_export_nl_harness`
-- `harness_record_adapter`
-- `harness_record_role`
 
 The exported spec should include:
 
@@ -142,6 +143,12 @@ The exported spec should include:
 - failure taxonomy
 - retry and stop rules
 - verification/gate policy
+
+Remaining P2 follow-up:
+
+- add role/profile-specific exports
+- add adapter registry records if external runtimes need custom tool mappings
+- add export comparison between harness profiles
 
 ### P3 - Meta-Harness-lite improvement loop
 

@@ -2,7 +2,7 @@
 
 Contracts, local memory, traces, eval profiles, and completion gates for Codex CLI.
 
-`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, compare harness profiles with eval runs, and run a gate before saying the work is done.
+`codex-harness-mcp` turns loose agent work into an auditable harness loop: define a bounded contract, query prior project knowledge, record research and implementation lessons, capture raw traces, verify evidence, compare harness profiles with eval runs, export the harness as natural-language control logic, and run a gate before saying the work is done.
 
 ![Codex Harness MCP loop](docs/assets/harness-loop.svg)
 
@@ -17,6 +17,7 @@ This MCP gives Codex a small local control plane:
 - raw traces for attempts, failures, decisions, and verification
 - structured verification records
 - harness profiles and eval run comparisons
+- natural-language harness spec export
 - next-step recovery after a failure
 - compact handoff context for long sessions
 - explicit completion gates
@@ -65,6 +66,7 @@ Use codex-harness. Bootstrap the project, migrate old harness state if needed, q
 | Verification records | Stores command output or manual checks without the MCP running shell commands. |
 | Eval cases and runs | Measures harness profile changes with score, verdict, cost, token, time, and regression metadata. |
 | Harness profiles | Lets Codex compare minimal, standard, verifier-heavy, research-heavy, and custom harness modes. |
+| Natural-language harness spec | Exports roles, stages, adapters, state semantics, failure taxonomy, and stop rules as a portable markdown spec. |
 | Next-step recovery | Helps narrow the next attempt after failure instead of thrashing. |
 | Completion gates | Makes "done" an explicit evidence check, not a vibe. |
 | Handoff context | Produces compact restart context after compaction or session changes. |
@@ -89,6 +91,7 @@ User request
   -> record traces, research, and lessons
   -> record verification evidence
   -> optionally record eval cases/runs for harness-profile changes
+  -> export natural-language harness spec when sharing or porting the loop
   -> evaluate completion gate
   -> compact handoff context when needed
 ```
@@ -108,6 +111,7 @@ Tools:
 - `harness_record_eval_case`
 - `harness_record_eval_run`
 - `harness_compare_eval_runs`
+- `harness_export_nl_harness`
 - `harness_record_knowledge`
 - `harness_record_research`
 - `harness_record_lesson`
@@ -135,6 +139,7 @@ Resources:
 - `harness://eval-run/{id}`
 - `harness://harness-profiles`
 - `harness://harness-profile/{id}`
+- `harness://harness/spec`
 
 Prompts:
 
@@ -150,6 +155,7 @@ Prompts:
 - `harness_record_eval_case`
 - `harness_record_eval_run`
 - `harness_compare_eval_runs`
+- `harness_export_nl_harness`
 
 ## Local knowledge RAG
 
@@ -181,6 +187,21 @@ Use eval records when changing the harness itself:
 
 This keeps the MCP safe: it stores scores, costs, token counts, traces, and regressions, but it does not execute benchmark commands or generated harness code.
 
+## Natural-language harness spec
+
+Use `harness_export_nl_harness` or read `harness://harness/spec` when you want the current harness logic as a portable artifact. The export includes:
+
+- runtime charter
+- roles
+- stage structure
+- adapters and tools
+- state semantics
+- failure taxonomy
+- retry and stop rules
+- current project snapshot
+
+Stored project data remains inside `<untrusted-data>` blocks.
+
 ## Security model
 
 The installer copies a local Node MCP server into `~/.codex/mcp-servers/codex-harness-mcp` and updates Codex `config.toml`.
@@ -203,7 +224,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry layer.
 
-It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, resources, prompts, and gates.
+It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, natural-language spec export, resources, prompts, and gates.
 
 ## Development checks
 
@@ -221,3 +242,4 @@ Key guardrails:
 - resources and prompts exposed safely
 - persistent knowledge RAG queryable locally
 - eval/profile records persist without command execution
+- natural-language harness spec export remains prompt-injection bounded

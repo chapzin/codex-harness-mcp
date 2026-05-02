@@ -12,6 +12,7 @@ import {
   createContract,
   ensureHarness,
   evalGate,
+  exportNaturalLanguageHarness,
   listHarness,
   listHarnessProfiles,
   listKnowledge,
@@ -38,7 +39,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.5"
+  version: "0.1.6"
 };
 
 const stringArray = {
@@ -337,6 +338,20 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: compareEvalRuns
+  },
+  {
+    name: "harness_export_nl_harness",
+    description: "Export the current harness as a portable natural-language spec with roles, stages, adapters, state semantics, failure taxonomy, and stop rules.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        max_traces: { type: "integer", minimum: 1, default: 5 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: textOutputSchema,
+    handler: async (input) => (await exportNaturalLanguageHarness(input)).spec
   },
   {
     name: "harness_record_knowledge",

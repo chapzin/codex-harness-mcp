@@ -14,9 +14,10 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Now has a local evaluation record layer for harness profiles, eval cases, eval runs, and run comparisons.
 - Now exports the current harness as a natural-language spec with roles, stages, adapters, state semantics, failure taxonomy, and stop rules.
 - Now has a safe Meta-Harness-lite layer for recording harness-change proposals and promotion decisions with baseline, candidate, holdout, regression, risk, and follow-up evidence.
+- Now has a local trace-level observability report for AgentOps review: active contract, trace inventory, eval posture, operational memory, governance, safety, and blind spots.
 - Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
-Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until ablation runners, telemetry, cross-model transfer checks, and harness-version search features exist.
+Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until ablation runners, live telemetry, cross-model transfer checks, and harness-version search features exist.
 
 ## Compatibility scorecard
 
@@ -28,6 +29,7 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 | Compaction and handoff support | Strong | `harness_compact_context`, recent traces, state summaries | No automatic stale-state or post-gate drift detection. |
 | Local project RAG and implementation learning | Strong | `harness_record_research`, `harness_record_lesson`, `harness_query_knowledge`, knowledge resources | Lexical retrieval only; no eval-driven quality curation or holdout split. |
 | Raw trace preservation | Strong | `harness_record_trace`, `harness_record_verification`, recent trace resources | No trace clustering, failure mining, regression generation, or harness-change diagnosis. |
+| AgentOps observability | Strong local report, partial live telemetry | `harness_export_observability_report`, `harness://observability/report`, `harness_observability_review` | Report is generated from local files; no live online monitoring, anomaly detection, or product analytics join. |
 | Completion gates | Strong as audit trail, partial as optimizer | `harness_eval_gate` records checked/unchecked conditions and evidence | No ablation to prove whether verifier/gate cost helps or hurts a task family. |
 | Natural-language harness representation | Partial-to-strong | Skill instructions, prompts, and `harness://harness/spec` expose roles, stages, adapters, state semantics, failure taxonomy, and stop rules | The spec is portable/readable, but not yet executable by a shared IHR-style runtime. |
 | Intelligent Harness Runtime style execution | Partial | MCP exposes tools/resources/prompts and persistent artifacts | No in-loop child-agent lifecycle, adapter registry, or runtime charter comparable to IHR. |
@@ -176,6 +178,32 @@ The implemented loop is deliberately non-executing:
 6. Promote only if evidence improves.
 
 The MCP should store and compare evidence, not run arbitrary generated code.
+
+### P3.5 - AgentOps observability report
+
+Status: implemented in v0.1.8 as a local report, resource, and prompt.
+
+Added:
+
+- `harness_export_observability_report`
+- `harness://observability/report`
+- `harness_observability_review`
+
+The report covers:
+
+- active contract
+- trace counts and recent trace summaries
+- eval splits and run verdicts
+- recent knowledge and harness profiles
+- proposals and promotion decisions
+- safety posture
+- blind spots such as missing verification, holdout, regression, memory, or promotion evidence
+
+Remaining follow-up:
+
+- add trace clustering and failure histograms
+- add optional export format for external observability tools
+- add product/outcome metadata if a project wants to join traces to business value
 
 ### P4 - AgentSpec-lite policy
 

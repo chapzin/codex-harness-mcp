@@ -21,19 +21,22 @@ Use these as the campaign's credibility base:
 - LangChain's Better Harness article argues that evals are the learning signal for improving harnesses: https://www.langchain.com/blog/better-harness-a-recipe-for-harness-hill-climbing-with-evals
 - Natural-Language Agent Harnesses argues that harness behavior should be inspectable and transferable, not buried in controller code: https://arxiv.org/abs/2603.25723
 - Meta-Harness explores optimizing harnesses end to end with prior experience and scores: https://arxiv.org/abs/2603.28052
+- Gradient Flow's AgentOps/observability writing argues that trace-level visibility, eval separation, operational memory, and governance are production prerequisites for agent systems: https://gradientflow.substack.com/p/are-your-ai-agents-flying-blind-in
+- Gradient Flow's harness-engineering coverage frames the winning move as fixing the environment around the model: context, constraints, validation loops, and governance: https://gradientflow.substack.com/p/your-ai-model-isnt-the-problem-its
+- Gradient Flow's operational-memory piece is the clean "context is not memory" proof point: https://gradientflow.substack.com/p/the-missing-layer-in-todays-agent
 - Reddit discussions around Codex, MCP, AGENTS.md, and agent engineering show demand for practical, inspectable agent workflows: https://www.reddit.com/r/codex/
 
 ## Core positioning
 
 ### One-line pitch
 
-Codex Harness MCP gives Codex CLI a local operating system for serious work: contracts, memory, traces, evals, promotion evidence, and completion gates.
+Codex Harness MCP gives Codex CLI a local operating system for serious work: contracts, memory, traces, observability reports, evals, promotion evidence, and completion gates.
 
 ### Short pitch
 
 Prompt engineering gets the agent started. Harness engineering keeps it from drifting.
 
-`codex-harness-mcp` is a dependency-free local MCP server for Codex CLI that stores the work around the model: contracts, local RAG memory, traces, verification evidence, eval runs, harness proposals, promotion decisions, natural-language harness specs, and completion gates.
+`codex-harness-mcp` is a dependency-free local MCP server for Codex CLI that stores the work around the model: contracts, local RAG memory, traces, verification evidence, observability reports, eval runs, harness proposals, promotion decisions, natural-language harness specs, and completion gates.
 
 It does not run commands. It records proof.
 
@@ -41,7 +44,7 @@ It does not run commands. It records proof.
 
 The next productivity jump will not come from asking the same model with prettier prompts.
 
-It comes from wrapping the model in a system that remembers, measures, verifies, and refuses to call work "done" without evidence.
+It comes from wrapping the model in a system that remembers, measures, observes, verifies, and refuses to call work "done" without evidence.
 
 That is the harness.
 
@@ -83,6 +86,7 @@ Post manually and adapt to community rules. Do not spam the same copy everywhere
 - If your Codex session forgets what it learned yesterday, you do not have a harness.
 - Stop letting your coding agent end work with vibes.
 - Context is not memory. Chat history is not a system of record.
+- Your agent needs a flight recorder before it needs another prompt.
 - The new agent stack is not prompt engineering. It is contracts, memory, traces, evals, and gates.
 - Every serious AI coding workflow needs a black box recorder.
 
@@ -177,6 +181,7 @@ It is a dependency-free local MCP server for Codex CLI that gives the agent a pr
 - local RAG knowledge
 - raw traces
 - structured verification records
+- local observability reports
 - harness profiles
 - eval cases and eval runs
 - Meta-Harness-lite proposal and promotion decisions
@@ -220,6 +225,7 @@ The goal is to make long-running agent work more inspectable:
 - create execution contracts before implementation
 - store project-local knowledge/RAG
 - record raw traces and verification evidence
+- export a local observability report for blind-spot review
 - store harness profiles, eval cases, eval runs, and comparisons
 - record Meta-Harness-lite proposals and promotion decisions
 - export the current loop as a natural-language harness spec

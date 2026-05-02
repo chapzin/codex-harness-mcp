@@ -75,7 +75,9 @@ try {
     "## Retry And Stop Rules",
     "## Current Project Snapshot",
     "harness_create_contract",
-    "harness_record_eval_run"
+    "harness_record_eval_run",
+    "harness_export_observability_report",
+    "harness://observability/report"
   ]) {
     if (!spec.includes(expected)) {
       throw new Error(`Exported spec is missing expected section or tool: ${expected}`);

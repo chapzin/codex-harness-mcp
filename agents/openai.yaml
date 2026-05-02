@@ -2,7 +2,7 @@ interface:
   display_name: "Codex Harness MCP"
   short_description: "Local harness engineering for Codex CLI"
   brand_color: "#2563EB"
-  default_prompt: "Use $codex-harness-mcp to query local knowledge, create a narrow contract, record traces, verification, eval/proposal evidence when useful, export the harness spec, and run the gate before completion."
+  default_prompt: "Use $codex-harness-mcp to query local knowledge, create a narrow contract, record traces, verification, export the observability report when risk rises, record eval/proposal evidence when useful, export the harness spec, and run the gate before completion."
 
 policy:
   allow_implicit_invocation: true

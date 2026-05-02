@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
   <title id="title">Codex Harness MCP feature map</title>
-  <desc id="desc">A detailed map of the Codex Harness MCP loop: contracts, local knowledge, traces, verification records, evals, harness proposals, promotion decisions, natural-language spec export, MCP resources, prompts, and local safety boundaries.</desc>
+  <desc id="desc">A detailed map of the Codex Harness MCP loop: contracts, local knowledge, traces, verification records, observability reports, evals, harness proposals, promotion decisions, natural-language spec export, MCP resources, prompts, and local safety boundaries.</desc>
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#f8fafc"/>
@@ -58,7 +58,7 @@
   <g class="font">
     <text x="76" y="103" class="eyebrow" fill="#bfdbfe">Local MCP server for Codex CLI</text>
     <text x="76" y="160" class="title">Codex Harness MCP</text>
-    <text x="76" y="194" class="subtitle">Contracts, persistent project memory, evals, Meta-Harness-lite promotion evidence, and completion gates.</text>
+    <text x="76" y="194" class="subtitle">Contracts, memory, traces, observability, evals, Meta-Harness-lite evidence, and completion gates.</text>
   </g>
 
   <g transform="translate(1132 70)" class="font">
@@ -164,17 +164,17 @@
   <g class="font" filter="url(#soft)">
     <rect x="1070" y="426" width="472" height="214" rx="26" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>
     <text x="1102" y="470" class="section">MCP surface for agents</text>
-    <text x="1102" y="499" class="small">Clients can read state, prompts, and the portable spec.</text>
+    <text x="1102" y="499" class="small">Clients can read state, prompts, the spec, and observability report.</text>
     <g transform="translate(1102 526)">
       <rect width="124" height="74" rx="16" fill="#eef2ff"/>
       <text x="20" y="31" class="card-title">Tools</text>
-      <text x="20" y="55" class="small">26 actions</text>
+      <text x="20" y="55" class="small">27 actions</text>
       <rect x="146" width="124" height="74" rx="16" fill="#f5f3ff"/>
       <text x="166" y="31" class="card-title">Resources</text>
-      <text x="166" y="55" class="small">12 URIs</text>
+      <text x="166" y="55" class="small">report + spec</text>
       <rect x="292" width="124" height="74" rx="16" fill="#ecfeff"/>
       <text x="312" y="31" class="card-title">Prompts</text>
-      <text x="312" y="55" class="small">16 recipes</text>
+      <text x="312" y="55" class="small">17 recipes</text>
     </g>
   </g>
 

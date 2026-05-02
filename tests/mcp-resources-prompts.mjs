@@ -52,7 +52,8 @@ try {
     "harness://contracts",
     `harness://contract/${created.contract.id}`,
     "harness://traces/recent",
-    "harness://gates/recent"
+    "harness://gates/recent",
+    "harness://observability/report"
   ]) {
     if (!resourceUris.includes(expected)) {
       throw new Error(`Missing resource URI: ${expected}`);
@@ -79,7 +80,8 @@ try {
     "harness_contract_from_request",
     "harness_failure_recovery",
     "harness_verify_and_close",
-    "harness_handoff_context"
+    "harness_handoff_context",
+    "harness_observability_review"
   ]) {
     if (!promptNames.includes(expected)) {
       throw new Error(`Missing prompt: ${expected}`);

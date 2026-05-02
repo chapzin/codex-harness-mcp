@@ -12,6 +12,7 @@ import {
   createContract,
   ensureHarness,
   evalGate,
+  exportObservabilityReport,
   exportNaturalLanguageHarness,
   listHarness,
   listHarnessProfiles,
@@ -43,7 +44,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.7"
+  version: "0.1.8"
 };
 
 const stringArray = {
@@ -439,6 +440,22 @@ const tools = [
     },
     outputSchema: textOutputSchema,
     handler: async (input) => (await exportNaturalLanguageHarness(input)).spec
+  },
+  {
+    name: "harness_export_observability_report",
+    description: "Export a trace-level observability report covering active contract, eval posture, operational memory, governance, safety, and blind spots.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        max_traces: { type: "integer", minimum: 1, default: 10 },
+        max_knowledge: { type: "integer", minimum: 1, default: 8 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: textOutputSchema,
+    handler: async (input) => (await exportObservabilityReport(input)).report
   },
   {
     name: "harness_record_knowledge",

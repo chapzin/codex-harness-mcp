@@ -201,6 +201,7 @@ Implementation status:
 - 2026-05-02: Implemented local harness eval/profile records in server version `0.1.5`: harness profiles, eval cases, eval runs, run comparisons, eval/profile resources and prompts, and state migration v4.
 - 2026-05-02: Implemented natural-language harness export in server version `0.1.6`: `harness_export_nl_harness`, `harness://harness/spec`, and prompt-injection-bounded spec generation.
 - 2026-05-02: Implemented Meta-Harness-lite promotion records in server version `0.1.7`: harness proposals, promotion decisions, resources/prompts, natural-language spec sections, and state migration v5.
+- 2026-05-02: Implemented Gradient Flow inspired AgentOps observability in server version `0.1.8`: `harness_export_observability_report`, `harness://observability/report`, `harness_observability_review`, and report sections for traces, eval posture, memory, governance, safety, and blind spots.
 
 ## Source links
 
@@ -222,6 +223,9 @@ Implementation status:
 - MCP tools spec: https://modelcontextprotocol.io/specification/2025-06-18/server/tools
 - MCP resources spec: https://modelcontextprotocol.io/specification/2025-06-18/server/resources
 - MCP prompts spec: https://modelcontextprotocol.io/specification/2025-06-18/server/prompts
+- Gradient Flow - Are Your AI Agents Flying Blind in Production?: https://gradientflow.substack.com/p/are-your-ai-agents-flying-blind-in
+- Gradient Flow - Your agents need runbooks, not bigger context windows: https://gradientflow.substack.com/p/the-missing-layer-in-todays-agent
+- Gradient Flow - Agent workflows: stop guessing, start measuring: https://gradientflow.substack.com/p/inside-the-agent-optimization-toolkit
 - Task Orchestrator MCP: https://github.com/jpicklyk/task-orchestrator
 - AutoHarness GitHub: https://github.com/aiming-lab/AutoHarness
 - Harness Regression Copilot: https://github.com/Horace-Maxwell/Harness_Engineering_Regression_Copilot

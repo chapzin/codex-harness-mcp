@@ -4,7 +4,7 @@
 
 [View on skills.sh](https://skills.sh/chapzin/codex-harness-mcp/codex-harness-mcp)
 
-`codex-harness-mcp` turns loose agent work into an auditable loop: define a bounded contract, query local project knowledge, record research and implementation lessons, capture raw traces, store verification evidence, compare harness profiles with eval runs, record harness-change proposals and promotion decisions, export the harness as natural-language control logic, and run a gate before claiming completion.
+`codex-harness-mcp` turns loose agent work into an auditable loop: define a bounded contract, query local project knowledge, record research and implementation lessons, capture raw traces, store verification evidence, export a trace-level observability report, compare harness profiles with eval runs, record harness-change proposals and promotion decisions, export the harness as natural-language control logic, and run a gate before claiming completion.
 
 ![Codex Harness MCP loop](docs/assets/harness-loop.svg)
 
@@ -16,6 +16,7 @@
 | Persistent memory | Local RAG over research notes, implementation lessons, and project knowledge. |
 | Recovery | Raw traces and next-step recommendations after failures or uncertain work. |
 | Verification | Structured records for commands/manual checks run outside the MCP server. |
+| Observability | A local "flight recorder" report for contract state, traces, eval posture, memory, governance, safety, and blind spots. |
 | Harness evals | Profiles, eval cases, eval runs, metrics, comparisons, and regressions. |
 | Meta-Harness-lite | Proposal and promotion records for harness changes, with optimization, holdout, regression, risk, and follow-up evidence. |
 | Natural-language harness | A portable markdown spec of roles, stages, tools, state semantics, failure taxonomy, and stop rules. |
@@ -42,6 +43,7 @@ This MCP gives Codex a small local control plane:
 - project-local RAG from research and implementation lessons
 - raw traces for attempts, failures, decisions, and verification
 - structured verification records
+- trace-level observability report for AgentOps-style review
 - harness profiles and eval run comparisons
 - Meta-Harness-lite proposal and promotion-decision records
 - natural-language harness spec export
@@ -58,6 +60,7 @@ The goal is not to replace Codex. The goal is to give Codex a durable working me
 - **No command execution:** verification is recorded, not executed by the MCP.
 - **Prompt-injection bounded:** stored user/source text is returned inside `<untrusted-data>` blocks.
 - **Harness-aware:** evals, profiles, proposal records, and promotion decisions are first-class data.
+- **Observable:** `harness_export_observability_report` and `harness://observability/report` expose trace, eval, memory, governance, and blind-spot signals.
 - **Portable:** `harness://harness/spec` exports the current loop as a natural-language harness spec.
 
 ## Install
@@ -94,13 +97,14 @@ codex-harness  node  ~/.codex/mcp-servers/codex-harness-mcp/src/server.mjs
 4. Create a small contract.
 5. Work inside the contract boundaries.
 6. Record attempts, failures, decisions, research, lessons, and verification evidence.
-7. If changing the harness itself, record profiles, evals, proposals, and promotion decisions.
-8. Run the completion gate before saying the work is done.
+7. Export the observability report when the run gets long, risky, or unclear.
+8. If changing the harness itself, record profiles, evals, proposals, and promotion decisions.
+9. Run the completion gate before saying the work is done.
 
 ## Start with this prompt
 
 ```text
-Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, record eval/profile/proposal evidence if changing the harness, and run the eval gate before saying the task is done.
+Use codex-harness. Bootstrap the project, migrate old harness state if needed, query local knowledge, create a small contract, record traces and lessons, record verification evidence, export the observability report when the run gets complex, record eval/profile/proposal evidence if changing the harness, and run the eval gate before saying the task is done.
 ```
 
 For harness optimization work:
@@ -123,6 +127,7 @@ Use codex-harness. Query local knowledge first. If missing or stale, research ex
 | Local knowledge RAG | Lets future sessions reuse project research and implementation lessons. |
 | Raw traces | Preserves the exact failure or verification signal for recovery. |
 | Verification records | Stores command output or manual checks without the MCP running shell commands. |
+| Observability report | Turns harness state into a trace-level review of evidence, evals, memory, governance, safety, and blind spots. |
 | Eval cases and runs | Measures harness profile changes with score, verdict, cost, token, time, and regression metadata. |
 | Harness profiles | Lets Codex compare minimal, standard, verifier-heavy, research-heavy, and custom harness modes. |
 | Meta-Harness-lite records | Stores proposed harness changes, expected gains, baseline/candidate/holdout evidence, accepted risks, and promotion decisions. |
@@ -140,6 +145,7 @@ It is intentionally a small local control plane, not a full benchmark runner or 
 See the detailed compatibility analysis:
 
 - [Harness compatibility analysis - 2026-05-02](docs/harness-compatibility-analysis-2026-05-02.md)
+- [Gradient Flow AgentOps synthesis - 2026-05-02](docs/gradient-flow-agentops-synthesis-2026-05-02.md)
 - [Usage playbook](docs/usage-playbook.md)
 - [Harness engineering research notes](docs/harness-engineering-research-2026-05-01.md)
 - [Marketing launch kit](docs/marketing-launch-kit.md)
@@ -155,6 +161,7 @@ User request
   -> implement inside contract boundaries
   -> record traces, research, and lessons
   -> record verification evidence
+  -> export observability report when risk or uncertainty rises
   -> optionally record eval cases/runs for harness-profile changes
   -> record harness proposal and promotion decision when optimizing the harness
   -> export natural-language harness spec when sharing or porting the loop
@@ -203,6 +210,7 @@ This makes the agent's operating state inspectable in normal files rather than h
 - `harness_record_promotion_decision`
 - `harness_list_promotion_decisions`
 - `harness_export_nl_harness`
+- `harness_export_observability_report`
 - `harness_record_knowledge`
 - `harness_record_research`
 - `harness_record_lesson`
@@ -235,6 +243,7 @@ This makes the agent's operating state inspectable in normal files rather than h
 - `harness://promotion-decisions`
 - `harness://promotion-decision/{id}`
 - `harness://harness/spec`
+- `harness://observability/report`
 
 ### Prompts
 
@@ -254,6 +263,7 @@ This makes the agent's operating state inspectable in normal files rather than h
 - `harness_record_promotion_decision`
 - `harness_meta_harness_review`
 - `harness_export_nl_harness`
+- `harness_observability_review`
 
 ## Local knowledge RAG
 
@@ -312,6 +322,19 @@ Promotion decisions should answer four questions:
 - Are regressions explicit?
 - Are accepted risks and follow-up checks recorded?
 
+## Observability report
+
+Use `harness_export_observability_report` or read `harness://observability/report` when you need a fast AgentOps review of the current run. The report summarizes:
+
+- active contract and verification commands
+- trace counts and recent trace summaries
+- eval splits, run verdicts, scores, costs, and notes
+- recent knowledge items and harness profiles
+- proposals, promotion decisions, and governance posture
+- blind spots such as missing verification traces, missing holdout/regression evals, or proposals without promotion decisions
+
+This is the project's local flight recorder. It does not send telemetry anywhere; it turns `.codex-harness/` files into a bounded markdown review with stored text kept inside `<untrusted-data>` blocks.
+
 ## Natural-language harness spec
 
 Use `harness_export_nl_harness` or read `harness://harness/spec` when you want the current harness logic as a portable artifact. The export includes:
@@ -350,6 +373,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 | Version | Highlights |
 | --- | --- |
+| `0.1.8` | Trace-level observability report, AgentOps review prompt/resource, Gradient Flow guidance. |
 | `0.1.7` | Meta-Harness-lite proposals, promotion decisions, resources/prompts, state v5. |
 | `0.1.6` | Natural-language harness export and `harness://harness/spec`. |
 | `0.1.5` | Harness profiles, eval cases, eval runs, and comparisons. |
@@ -358,9 +382,9 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 ## What this is not
 
-Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry layer.
+Not a replacement agent runtime. Not a hosted memory service. Not a command runner. Not a browser or web research tool. Not a remote telemetry service.
 
-It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, eval records, harness profiles, Meta-Harness-lite promotion records, natural-language spec export, resources, prompts, and gates.
+It is a small local harness for Codex CLI: contracts, traces, local knowledge, verification records, observability reports, eval records, harness profiles, Meta-Harness-lite promotion records, natural-language spec export, resources, prompts, and gates.
 
 ## Development checks
 
@@ -376,6 +400,7 @@ Key guardrails:
 - no installer command execution markers
 - prompt-injection boundaries enforced
 - resources and prompts exposed safely
+- observability report exported safely
 - persistent knowledge RAG queryable locally
 - eval/profile records persist without command execution
 - Meta-Harness-lite proposal/promotion records persist without command execution

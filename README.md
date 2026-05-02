@@ -142,6 +142,7 @@ See the detailed compatibility analysis:
 - [Harness compatibility analysis - 2026-05-02](docs/harness-compatibility-analysis-2026-05-02.md)
 - [Usage playbook](docs/usage-playbook.md)
 - [Harness engineering research notes](docs/harness-engineering-research-2026-05-01.md)
+- [Marketing launch kit](docs/marketing-launch-kit.md)
 
 Important operating principle: add harness structure only when it improves acceptance evidence, recovery, safety, or handoff quality. Verifiers, extra stages, and multi-candidate search are hypotheses to measure, not automatic wins.
 

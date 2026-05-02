@@ -15,6 +15,7 @@ Good fits:
 - research-backed implementation
 - repeated failures
 - compaction or handoff risk
+- governance closeout before completion or release
 - AgentOps-style observability or blind-spot review
 - harness/profile/eval experimentation
 - work where "done" must be backed by evidence
@@ -76,10 +77,11 @@ Recommended sequence:
 5. regular Codex work outside the MCP
 6. `harness_record_trace`
 7. `harness_record_verification`
-8. `harness_export_observability_report` when risk, duration, or uncertainty rises
-9. `harness_record_lesson` when something reusable was learned
-10. `harness_eval_gate`
-11. `harness_compact_context` for handoff or resume
+8. `harness_audit_governance` before closing; stop on BLOCK and call out FLAG
+9. `harness_export_observability_report` when risk, duration, or uncertainty rises
+10. `harness_record_lesson` when something reusable was learned
+11. `harness_eval_gate`
+12. `harness_compact_context` for handoff or resume
 
 ## Research-backed work
 
@@ -149,6 +151,24 @@ Recommended sequence:
 
 The report is local markdown generated from `.codex-harness/`. It is not remote telemetry. Its job is to prevent silent state corruption by making the agent's current evidence inventory visible.
 
+## Governance closeout loop
+
+Use this before claiming a large implementation, release, refactor, skill update, or harness change is complete:
+
+```text
+Use codex-harness. Audit governance with harness_audit_governance or read harness://governance/report. Stop on BLOCK, call out FLAG, and close only when the report is PASS or the user explicitly accepts the remaining risk.
+```
+
+Recommended sequence:
+
+1. `harness_write_governance_policy` when a project needs custom write roots, forbidden paths, required verification, network/package policy, or subagent policy.
+2. `harness_audit_governance` after output artifacts and verification evidence exist.
+3. Fix BLOCK findings such as missing contract, missing output, missing raw trace, missing verification, or missing completion gate.
+4. Call out FLAG findings in the final answer or tighten the policy.
+5. Read `harness://governance/report` when a markdown closeout artifact is easier to review.
+
+This is advisory enforcement by design. The MCP remains dependency-free and does not run commands or block the host agent's filesystem directly; it gives the agent and reviewer a deterministic `PASS/FLAG/BLOCK` closeout posture.
+
 ## Completion checklist
 
 Before claiming completion, verify that the final answer can point to:
@@ -156,6 +176,7 @@ Before claiming completion, verify that the final answer can point to:
 - active contract
 - output paths or artifacts
 - verification evidence
+- governance audit status
 - failures and recovery steps, if any
 - implementation lessons, if reusable
 - eval/profile/proposal evidence, if the harness changed
@@ -168,6 +189,7 @@ The MCP writes local project state under `.codex-harness/`:
 ```text
 .codex-harness/
   state.json
+  policy.json
   HARNESS.md
   contracts/
   traces/
@@ -200,6 +222,7 @@ Main tool families:
 
 - contracts: `harness_create_contract`, `harness_update_state`, `harness_list`
 - traces and gates: `harness_record_trace`, `harness_record_verification`, `harness_eval_gate`, `harness_next_step`
+- governance: `harness_write_governance_policy`, `harness_audit_governance`, `harness_export_governance_report`
 - knowledge: `harness_record_research`, `harness_record_lesson`, `harness_query_knowledge`, `harness_rebuild_knowledge_index`
 - observability: `harness_export_observability_report`
 - evals: `harness_record_harness_profile`, `harness_record_eval_case`, `harness_record_eval_run`, `harness_compare_eval_runs`
@@ -211,6 +234,8 @@ Key resources:
 - `harness://state`
 - `harness://contracts`
 - `harness://traces/recent`
+- `harness://governance/policy`
+- `harness://governance/report`
 - `harness://knowledge/index`
 - `harness://evals/runs`
 - `harness://harness-proposals`

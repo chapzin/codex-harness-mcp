@@ -16,6 +16,7 @@ It is best described as a small, local, dependency-free control plane for Codex 
 - Now has a safe Meta-Harness-lite layer for recording harness-change proposals and promotion decisions with baseline, candidate, holdout, regression, risk, and follow-up evidence.
 - Now has a local trace-level observability report for AgentOps review: active contract, trace inventory, eval posture, operational memory, governance, safety, and blind spots.
 - Now has a multi-client config layer for Codex CLI, Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code/Copilot, Cline, Windsurf, and best-effort Roo Code project config.
+- Now has an AgentSpec-lite governance layer: project-local policy, `PASS/FLAG/BLOCK` audit, governance report/resource/prompt, and tests that block missing closeout evidence.
 - Still missing the automated runner/optimizer layer required for full ablations, cross-model transfer tests, and autonomous harness search.
 
 Short version: the skill is a good foundation for harness engineering, but it should not claim parity with NLAH/IHR or Meta-Harness until ablation runners, live telemetry, cross-model transfer checks, and harness-version search features exist.
@@ -36,7 +37,7 @@ Short version: the skill is a good foundation for harness engineering, but it sh
 | Intelligent Harness Runtime style execution | Partial | MCP exposes tools/resources/prompts and persistent artifacts | No in-loop child-agent lifecycle, adapter registry, or runtime charter comparable to IHR. |
 | Meta-Harness style optimization | Partial-to-strong local evidence layer | Full-history files, traces, knowledge, harness profiles, eval cases, eval runs, compare-runs records, `harness_record_harness_proposal`, and `harness_record_promotion_decision` | No automated proposer loop, benchmark runner, source snapshotting, or generated-harness execution. |
 | AutoHarness style generated harness/code policy | Missing | Current MCP intentionally does not synthesize or execute harness code | Could add proposal records, but should not auto-run generated code inside the MCP. |
-| AgentSpec style runtime enforcement | Partial | Server has strict no-shell/no-remote behavior and untrusted data boundaries | No policy DSL for Codex actions, sensitive path globs, or enforceable action blocking outside MCP writes. |
+| AgentSpec style runtime enforcement | Partial-to-strong advisory layer | Server has strict no-shell/no-remote behavior, untrusted data boundaries, `.codex-harness/policy.json`, `harness_audit_governance`, and `harness://governance/report` | Still advisory; no direct action blocking outside MCP writes unless a host client enforces the policy. |
 | Anthropic long-running agent pattern | Strong core, partial workflow | Bootstrap, contracts, progress traces, handoff context, verification evidence | No structured feature list, one-feature queue, git-progress integration, or initializer/coding role split. |
 | LangChain harness engineering pattern | Partial-to-strong local record layer | Traces, verification, environment/context notes via contracts and RAG, token/cost/time/tool-call metrics in eval runs, holdout/proposal records | No automatic trace analysis, runner integration, or loop detection yet. |
 | OpenAI agent-legible repo pattern | Strong direction | Local docs, no runtime dependencies, inspectable MCP implementation | No docs freshness lint, architecture lint, or doc-gardening workflow. |
@@ -209,7 +210,21 @@ Remaining follow-up:
 
 ### P4 - AgentSpec-lite policy
 
-Add `.codex-harness/policy.json` with:
+Status: implemented in v0.1.10 as local policy plus governance audit/report.
+
+Added:
+
+- `.codex-harness/policy.json`
+- `harness_write_governance_policy`
+- `harness_audit_governance`
+- `harness_export_governance_report`
+- `harness://governance/policy`
+- `harness://governance/report`
+- `harness_governance_review`
+- `tests/governance-audit.mjs`
+- `tests/release-quality-gates.mjs`
+
+The policy covers:
 
 - allowed output roots
 - sensitive path globs
@@ -218,7 +233,19 @@ Add `.codex-harness/policy.json` with:
 - allowed/blocked action categories
 - risk labels
 
-The first version can be advisory. A later version can integrate with clients that can enforce action boundaries.
+The first version is advisory. A later version can integrate with clients that can enforce action boundaries.
+
+### P5 - Quality-control expansion
+
+Status: started in v0.1.10.
+
+Added release-quality checks so public docs and version markers cannot drift from implemented MCP tools/resources. Future hardening should focus on:
+
+- trace-mined eval cases
+- failure taxonomy counters
+- optional coverage reporting with Node's built-in test runner
+- pinned CI matrix only if external workflow dependencies do not hurt the skills.sh scanner posture
+- source/provenance documentation for release bundles
 
 ## Important non-goals
 

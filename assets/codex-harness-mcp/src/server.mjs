@@ -7,6 +7,7 @@ import {
   agentSafeHarnessProfile,
   agentSafeState,
   agentSafeTrace,
+  auditGovernance,
   compactContext,
   compareEvalRuns,
   createContract,
@@ -33,6 +34,8 @@ import {
   recordResearchSource,
   recordVerification,
   recordTrace,
+  renderGovernanceReport,
+  writeGovernancePolicy,
   updateState
 } from "./core.mjs";
 import {
@@ -44,7 +47,7 @@ import {
 
 const SERVER_INFO = {
   name: "codex-harness-mcp",
-  version: "0.1.9"
+  version: "0.1.10"
 };
 
 const stringArray = {
@@ -456,6 +459,60 @@ const tools = [
     },
     outputSchema: textOutputSchema,
     handler: async (input) => (await exportObservabilityReport(input)).report
+  },
+  {
+    name: "harness_write_governance_policy",
+    description: "Persist the project-local governance policy for write scope, forbidden paths, verification, traces, completion gates, network, packages, and subagent bounds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        allowed_write_roots: stringArray,
+        forbidden_paths: stringArray,
+        required_verification: stringArray,
+        require_trace_raw: { type: "boolean", default: true },
+        require_completion_gate: { type: "boolean", default: true },
+        network_allowed: { type: "boolean", default: false },
+        install_packages_allowed: { type: "boolean", default: false },
+        subagent_policy: { type: "string" },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: writeGovernancePolicy
+  },
+  {
+    name: "harness_audit_governance",
+    description: "Return a PASS/FLAG/BLOCK audit for contract quality, output artifacts, raw traces, verification evidence, policy bounds, and completion gates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        max_traces: { type: "integer", minimum: 1, default: 20 },
+        max_gates: { type: "integer", minimum: 1, default: 12 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: auditGovernance
+  },
+  {
+    name: "harness_export_governance_report",
+    description: "Export the current governance audit as Markdown so an agent can stop on BLOCK, call out FLAG, and close only on PASS.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        max_traces: { type: "integer", minimum: 1, default: 20 },
+        max_gates: { type: "integer", minimum: 1, default: 12 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: textOutputSchema,
+    handler: async (input) => renderGovernanceReport(await auditGovernance(input))
   },
   {
     name: "harness_record_knowledge",

@@ -157,6 +157,7 @@ try {
     "Evaluation Posture",
     "Operational Memory",
     "Governance And Safety",
+    "Governance audit",
     "Blind Spots",
     "harness_record_verification",
     "harness_record_eval_run"

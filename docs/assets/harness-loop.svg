@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
   <title id="title">Codex Harness MCP feature map</title>
-  <desc id="desc">A detailed map of the Codex Harness MCP loop for MCP coding clients: contracts, local knowledge, traces, verification records, observability reports, evals, harness proposals, promotion decisions, natural-language spec export, MCP resources, prompts, and local safety boundaries.</desc>
+  <desc id="desc">A detailed map of the Codex Harness MCP loop for MCP coding clients: contracts, local knowledge, traces, verification records, governance policy and PASS/FLAG/BLOCK audits, observability reports, evals, harness proposals, promotion decisions, natural-language spec export, MCP resources, prompts, and local safety boundaries.</desc>
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#f8fafc"/>
@@ -134,6 +134,7 @@
     <text x="304" y="624" class="mono">migrations/</text>
     <text x="304" y="652" class="mono">artifacts/</text>
     <text x="304" y="680" class="mono">scratch/</text>
+    <text x="304" y="708" class="mono">policy.json</text>
 
     <g transform="translate(86 856)">
       <rect width="118" height="30" rx="15" fill="#ffedd5"/>
@@ -164,17 +165,17 @@
   <g class="font" filter="url(#soft)">
     <rect x="1070" y="426" width="472" height="214" rx="26" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>
     <text x="1102" y="470" class="section">MCP surface for agents</text>
-    <text x="1102" y="499" class="small">Clients can read state, prompts, the spec, and observability report.</text>
+    <text x="1102" y="499" class="small">Clients can read state, prompts, specs, governance, and reports.</text>
     <g transform="translate(1102 526)">
       <rect width="124" height="74" rx="16" fill="#eef2ff"/>
       <text x="20" y="31" class="card-title">Tools</text>
-      <text x="20" y="55" class="small">27 actions</text>
+      <text x="20" y="55" class="small">30 actions</text>
       <rect x="146" width="124" height="74" rx="16" fill="#f5f3ff"/>
       <text x="166" y="31" class="card-title">Resources</text>
-      <text x="166" y="55" class="small">report + spec</text>
+      <text x="166" y="55" class="small">policy + reports</text>
       <rect x="292" width="124" height="74" rx="16" fill="#ecfeff"/>
       <text x="312" y="31" class="card-title">Prompts</text>
-      <text x="312" y="55" class="small">17 recipes</text>
+      <text x="312" y="55" class="small">18 recipes</text>
     </g>
   </g>
 
@@ -217,7 +218,7 @@
     <text x="210" y="953" font-size="16" font-weight="600" fill="#e2e8f0">Stored user/source text returns inside</text>
     <text x="487" y="953" class="mono" fill="#a7f3d0">&lt;untrusted-data&gt;</text>
     <text x="655" y="953" font-size="16" font-weight="600" fill="#e2e8f0">blocks and must be treated as evidence, never instructions.</text>
-    <text x="1164" y="953" font-size="16" font-weight="800" fill="#fde68a">Completion requires a gate.</text>
+    <text x="1118" y="953" font-size="16" font-weight="800" fill="#fde68a">Completion requires governance + gate.</text>
   </g>
 
   <path class="line-green dash" d="M423 382 C423 412 283 412 283 426"/>

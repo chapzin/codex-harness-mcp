@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import {
   agentSafeContract,
   agentSafeEvalCase,
@@ -45,10 +46,16 @@ import {
   readHarnessResource
 } from "./mcp-features.mjs";
 
+const PACKAGE_JSON = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8")
+);
 const SERVER_INFO = {
-  name: "codex-harness-mcp",
-  version: "0.1.10"
+  name: PACKAGE_JSON.name,
+  version: PACKAGE_JSON.version
 };
+
+const MAX_LINE_BYTES = 1_000_000;
+const MAX_BUFFER_BYTES = 4_000_000;
 
 const stringArray = {
   type: "array",
@@ -717,6 +724,14 @@ let inputEnded = false;
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   readBuffer += chunk;
+  if (readBuffer.length > MAX_BUFFER_BYTES) {
+    sendError(null, -32700, "Input buffer overflow: line exceeds maximum allowed size.");
+    readBuffer = "";
+    process.stdin.pause();
+    inputEnded = true;
+    maybeExit();
+    return;
+  }
   drainReadBuffer();
 });
 
@@ -731,12 +746,20 @@ function drainReadBuffer(options = {}) {
     const index = readBuffer.indexOf("\n");
     const line = readBuffer.slice(0, index).trim();
     readBuffer = readBuffer.slice(index + 1);
+    if (line.length > MAX_LINE_BYTES) {
+      sendError(null, -32700, "JSON-RPC line exceeds maximum allowed size.");
+      continue;
+    }
     processLine(line);
   }
 
   if (options.flushFinal && readBuffer.trim()) {
     const line = readBuffer.trim();
     readBuffer = "";
+    if (line.length > MAX_LINE_BYTES) {
+      sendError(null, -32700, "JSON-RPC line exceeds maximum allowed size.");
+      return;
+    }
     processLine(line);
   }
 }
@@ -825,13 +848,20 @@ async function handleMessage(message) {
 
 async function handleToolCall(message) {
   const name = message.params?.name;
-  const args = message.params?.arguments || {};
+  const rawArgs = message.params?.arguments;
   const tool = toolMap.get(name);
 
   if (!tool) {
     sendError(message.id, -32602, `Unknown tool: ${name || "missing name"}`);
     return;
   }
+
+  if (rawArgs !== undefined && (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs))) {
+    sendError(message.id, -32602, `Tool arguments for "${name}" must be an object.`);
+    return;
+  }
+
+  const args = rawArgs || {};
 
   try {
     const value = await tool.handler(args);

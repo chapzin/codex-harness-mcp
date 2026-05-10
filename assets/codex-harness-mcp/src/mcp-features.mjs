@@ -32,6 +32,7 @@ import {
   readPromotionDecision,
   readPromotionDecisions,
   renderContract,
+  safeFileId,
   renderEvalCase,
   renderEvalRun,
   renderGovernanceReport,
@@ -426,9 +427,13 @@ export async function readHarnessResource(uri, input = {}) {
   }
 
   if (parsed.kind === "contract") {
-    const contract = await readJson(harnessPath(projectPath, "contracts", `${parsed.id}.json`), null);
+    const safeId = safeFileId(parsed.id);
+    if (!safeId) {
+      throw new Error(`Invalid harness contract id: ${parsed.id}`);
+    }
+    const contract = await readJson(harnessPath(projectPath, "contracts", `${safeId}.json`), null);
     if (!contract) {
-      throw new Error(`Harness contract not found: ${parsed.id}`);
+      throw new Error(`Harness contract not found: ${safeId}`);
     }
     return resourceText(uri, MARKDOWN_MIME, renderContract(contract), false);
   }

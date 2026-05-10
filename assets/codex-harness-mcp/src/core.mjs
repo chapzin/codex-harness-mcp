@@ -672,7 +672,11 @@ export async function loadContract(projectPath, contractId) {
   if (!selected) {
     return null;
   }
-  return readJson(harnessPath(projectPath, "contracts", `${selected}.json`), null);
+  const safeId = safeFileId(selected);
+  if (!safeId) {
+    return null;
+  }
+  return readJson(harnessPath(projectPath, "contracts", `${safeId}.json`), null);
 }
 
 export async function recordTrace(input) {
@@ -877,21 +881,23 @@ export async function listKnowledge(input = {}) {
 
 export async function rebuildKnowledgeIndex(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
-  const root = harnessPath(projectPath, "knowledge", "items");
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const items = [];
-  for (const name of names) {
-    const item = await readJson(path.join(root, name), null);
-    if (item) items.push(item);
-  }
+  return withKnowledgeIndexLock(projectPath, async () => {
+    const root = harnessPath(projectPath, "knowledge", "items");
+    const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
+    const items = [];
+    for (const name of names) {
+      const item = await readJson(path.join(root, name), null);
+      if (item) items.push(item);
+    }
 
-  const index = buildKnowledgeIndex(items);
-  await writeJson(knowledgeIndexPath(projectPath), index);
-  return {
-    projectPath,
-    itemCount: index.items.length,
-    index
-  };
+    const index = buildKnowledgeIndex(items);
+    await writeJson(knowledgeIndexPath(projectPath), index);
+    return {
+      projectPath,
+      itemCount: index.items.length,
+      index
+    };
+  });
 }
 
 export async function readKnowledgeItem(projectPath, itemId) {
@@ -908,7 +914,35 @@ export async function readKnowledgeIndex(projectPath) {
     updatedAt: null,
     items: []
   };
-  return readJson(knowledgeIndexPath(projectPath), fallback);
+  try {
+    const index = await readJson(knowledgeIndexPath(projectPath), fallback);
+    if (!index || typeof index !== "object" || !Array.isArray(index.items)) {
+      return await recoverCorruptKnowledgeIndex(projectPath, fallback);
+    }
+    return index;
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return fallback;
+    }
+    return recoverCorruptKnowledgeIndex(projectPath, fallback);
+  }
+}
+
+async function recoverCorruptKnowledgeIndex(projectPath, fallback) {
+  try {
+    const result = await rebuildKnowledgeIndex({ project_path: projectPath });
+    return result.index;
+  } catch {
+    return fallback;
+  }
+}
+
+const knowledgeIndexLocks = new Map();
+function withKnowledgeIndexLock(projectPath, fn) {
+  const previous = knowledgeIndexLocks.get(projectPath) || Promise.resolve();
+  const next = previous.then(fn, fn);
+  knowledgeIndexLocks.set(projectPath, next.catch(() => {}));
+  return next;
 }
 
 export async function recordHarnessProfile(input = {}) {
@@ -1152,6 +1186,7 @@ export async function exportObservabilityReport(input = {}) {
   const state = await loadState(projectPath);
   const contract = await loadContract(projectPath, input.contract_id);
   const traces = await readRecentTraces(projectPath, input.max_traces || 10);
+  const gates = await readRecentGates(projectPath, input.max_gates || 8);
   const knowledge = await listKnowledge({
     project_path: projectPath,
     limit: input.max_knowledge || 8
@@ -1175,6 +1210,7 @@ export async function exportObservabilityReport(input = {}) {
       state,
       contract,
       traces,
+      gates,
       knowledge: knowledge.items || [],
       evalCases,
       evalRuns,
@@ -1592,7 +1628,7 @@ function promotionDecisionMarkdownPath(projectPath, id) {
   return harnessPath(projectPath, "promotion-decisions", `${id}.md`);
 }
 
-function safeFileId(value) {
+export function safeFileId(value) {
   const safeId = sanitizeText(value, { maxLength: 180 });
   if (!safeId || safeId.includes("/") || safeId.includes("\\") || safeId.includes("..") || !/^[A-Za-z0-9._-]+$/.test(safeId)) {
     return null;
@@ -1601,16 +1637,18 @@ function safeFileId(value) {
 }
 
 async function upsertKnowledgeIndex(projectPath, item) {
-  const index = await readKnowledgeIndex(projectPath);
-  const nextItems = index.items.filter((entry) => entry.id !== item.id);
-  nextItems.push(indexKnowledgeItem(item));
-  const nextIndex = {
-    version: KNOWLEDGE_INDEX_VERSION,
-    updatedAt: nowIso(),
-    items: nextItems.sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
-  };
-  await writeJson(knowledgeIndexPath(projectPath), nextIndex);
-  return nextIndex;
+  return withKnowledgeIndexLock(projectPath, async () => {
+    const index = await readKnowledgeIndex(projectPath);
+    const nextItems = index.items.filter((entry) => entry.id !== item.id);
+    nextItems.push(indexKnowledgeItem(item));
+    const nextIndex = {
+      version: KNOWLEDGE_INDEX_VERSION,
+      updatedAt: nowIso(),
+      items: nextItems.sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+    };
+    await writeJson(knowledgeIndexPath(projectPath), nextIndex);
+    return nextIndex;
+  });
 }
 
 function buildKnowledgeIndex(items) {
@@ -2090,16 +2128,24 @@ export async function evalGate(input) {
     throw new Error("No active contract found. Pass contract_id or create a contract first.");
   }
 
+  const projectRootBoundary = projectPath.endsWith(path.sep) ? projectPath : `${projectPath}${path.sep}`;
   const outputChecks = await Promise.all(
     (contract.outputPaths || []).map(async (outputPath) => {
       const absolute = path.resolve(projectPath, outputPath);
+      const insideProject = absolute === projectPath || absolute.startsWith(projectRootBoundary);
+      if (!insideProject) {
+        return { path: outputPath, exists: false, outOfScope: true };
+      }
       return { path: outputPath, exists: await fileExists(absolute) };
     })
   );
   const missingOutputs = outputChecks.filter((item) => !item.exists);
   const checked = new Set(input.checked_conditions || []);
   const uncheckedConditions = (contract.completionConditions || []).filter((condition) => !checked.has(condition));
-  const verdict = input.verdict || (missingOutputs.length === 0 && uncheckedConditions.length === 0 ? "pass" : "unknown");
+  const requestedVerdict = sanitizeNullableText(input.verdict, { maxLength: 16 });
+  const allowedVerdicts = ["pass", "fail", "unknown"];
+  const explicitVerdict = allowedVerdicts.includes(requestedVerdict) ? requestedVerdict : null;
+  const verdict = explicitVerdict || (missingOutputs.length === 0 && uncheckedConditions.length === 0 ? "pass" : "unknown");
   const gate = {
     id: `gate-${today()}-${crypto.randomBytes(3).toString("hex")}`,
     ts: nowIso(),
@@ -2555,6 +2601,7 @@ export function renderObservabilityReport({
   state,
   contract,
   traces,
+  gates = [],
   knowledge,
   evalCases,
   evalRuns,
@@ -2576,6 +2623,7 @@ export function renderObservabilityReport({
   const blindSpots = observabilityBlindSpots({
     contract,
     traces,
+    gates,
     knowledge,
     evalCases,
     evalRuns,
@@ -3106,6 +3154,7 @@ function renderCountMap(counts) {
 function observabilityBlindSpots({
   contract,
   traces,
+  gates,
   knowledge,
   evalCases,
   evalRuns,
@@ -3117,6 +3166,10 @@ function observabilityBlindSpots({
   const verificationCount = (traces || []).filter((trace) => trace.kind === "verification").length;
   const hasHoldout = (evalCases || []).some((evalCase) => evalCase.split === "holdout");
   const hasRegression = (evalCases || []).some((evalCase) => evalCase.split === "regression");
+  const contractGates = contract
+    ? (gates || []).filter((gate) => gate.contractId === contract.id)
+    : (gates || []);
+  const lastGate = sortByTimestampDesc(contractGates)[0] || null;
 
   if (!contract) {
     blindSpots.push("No active execution contract is recorded.");
@@ -3141,6 +3194,12 @@ function observabilityBlindSpots({
   }
   if (!hasRegression) {
     blindSpots.push("No regression eval case is recorded; recurring failures may remain invisible.");
+  }
+  if (lastGate && Array.isArray(lastGate.uncheckedConditions) && lastGate.uncheckedConditions.length > 0) {
+    blindSpots.push("Last completion gate has unchecked completion conditions; rerun harness_eval_gate after they are satisfied.");
+  }
+  if (lastGate && lastGate.verdict && lastGate.verdict !== "pass") {
+    blindSpots.push(`Last completion gate verdict is \`${lastGate.verdict}\`; treat completion as not yet established.`);
   }
   if ((harnessProposals || []).length > 0 && (!promotionDecisions || promotionDecisions.length === 0)) {
     blindSpots.push("Harness proposals exist without a promotion decision.");

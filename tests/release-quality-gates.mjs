@@ -11,8 +11,18 @@ const serverSource = await fs.readFile(path.join(assetRoot, "src", "server.mjs")
 const readme = await fs.readFile(path.join(repoRoot, "README.md"), "utf8");
 const skill = await fs.readFile(path.join(repoRoot, "SKILL.md"), "utf8");
 
-const serverVersion = serverSource.match(/version:\s*"([^"]+)"/)?.[1];
-assert.equal(serverVersion, packageJson.version, "Server version must match assets package version.");
+assert.match(
+  serverSource,
+  /readFileSync\(\s*new URL\(\s*"\.\.\/package\.json"/,
+  "Server must source version from package.json (single source of truth)."
+);
+assert.match(
+  serverSource,
+  /version:\s*PACKAGE_JSON\.version/,
+  "Server must expose PACKAGE_JSON.version in serverInfo."
+);
+assert.ok(typeof packageJson.version === "string" && packageJson.version.length > 0,
+  "package.json must declare a non-empty version.");
 
 for (const marker of [
   "harness_write_governance_policy",

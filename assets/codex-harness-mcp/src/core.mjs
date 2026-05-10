@@ -98,7 +98,31 @@ export function resolveProjectPath(inputPath) {
 }
 
 export function harnessPath(projectPath, ...parts) {
-  return path.join(projectPath, HARNESS_DIR, ...parts);
+  const harnessRoot = path.resolve(projectPath, HARNESS_DIR);
+  const resolved = path.resolve(harnessRoot, ...parts);
+  if (resolved !== harnessRoot && !resolved.startsWith(`${harnessRoot}${path.sep}`)) {
+    throw new Error(`Path escapes harness root: ${parts.join("/")}`);
+  }
+  return resolved;
+}
+
+function resolveScopedOutput(projectPath, outputPath) {
+  const projectRootBoundary = projectPath.endsWith(path.sep) ? projectPath : `${projectPath}${path.sep}`;
+  const absolute = path.resolve(projectPath, outputPath);
+  const insideProject = absolute === projectPath || absolute.startsWith(projectRootBoundary);
+  return { absolute, insideProject };
+}
+
+async function checkOutputPaths(projectPath, outputPaths) {
+  return Promise.all(
+    (outputPaths || []).map(async (outputPath) => {
+      const { absolute, insideProject } = resolveScopedOutput(projectPath, outputPath);
+      if (!insideProject) {
+        return { path: outputPath, exists: false, outOfScope: true };
+      }
+      return { path: outputPath, exists: await fileExists(absolute) };
+    })
+  );
 }
 
 export function slugify(value) {
@@ -387,13 +411,28 @@ export async function readJson(filePath, fallback) {
   }
 }
 
+async function refuseSymlinkAt(filePath) {
+  try {
+    const stat = await fs.lstat(filePath);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Refusing to write through symlink: ${filePath}`);
+    }
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
 export async function writeJson(filePath, value) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await refuseSymlinkAt(filePath);
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 export async function appendJsonl(filePath, value) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await refuseSymlinkAt(filePath);
   await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
@@ -881,31 +920,51 @@ export async function listKnowledge(input = {}) {
 
 export async function rebuildKnowledgeIndex(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
-  return withKnowledgeIndexLock(projectPath, async () => {
-    const root = harnessPath(projectPath, "knowledge", "items");
-    const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-    const items = [];
-    for (const name of names) {
-      const item = await readJson(path.join(root, name), null);
-      if (item) items.push(item);
-    }
-
-    const index = buildKnowledgeIndex(items);
-    await writeJson(knowledgeIndexPath(projectPath), index);
-    return {
-      projectPath,
-      itemCount: index.items.length,
-      index
-    };
-  });
+  return withKnowledgeIndexLock(projectPath, () => rebuildKnowledgeIndexLocked(projectPath));
 }
 
 export async function readKnowledgeItem(projectPath, itemId) {
-  const safeId = sanitizeText(itemId, { maxLength: 160 });
-  if (!safeId || safeId.includes("/") || safeId.includes("\\") || safeId.includes("..")) {
+  const safeId = safeFileId(itemId);
+  if (!safeId) {
     return null;
   }
   return readJson(knowledgeItemPath(projectPath, safeId), null);
+}
+
+async function readKnowledgeIndexRaw(projectPath, fallback) {
+  try {
+    const index = await readJson(knowledgeIndexPath(projectPath), fallback);
+    if (!index || typeof index !== "object" || !Array.isArray(index.items)) {
+      return null;
+    }
+    return index;
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return fallback;
+    }
+    return null;
+  }
+}
+
+async function rebuildKnowledgeIndexLocked(projectPath) {
+  const root = harnessPath(projectPath, "knowledge", "items");
+  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
+  const items = [];
+  for (const name of names) {
+    const item = await readJson(path.join(root, name), null);
+    if (item) items.push(item);
+  }
+  const index = buildKnowledgeIndex(items);
+  await writeJson(knowledgeIndexPath(projectPath), index);
+  return { projectPath, itemCount: index.items.length, index };
+}
+
+async function recoverCorruptKnowledgeIndexLocked(projectPath, fallback) {
+  try {
+    return (await rebuildKnowledgeIndexLocked(projectPath)).index;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function readKnowledgeIndex(projectPath) {
@@ -914,27 +973,11 @@ export async function readKnowledgeIndex(projectPath) {
     updatedAt: null,
     items: []
   };
-  try {
-    const index = await readJson(knowledgeIndexPath(projectPath), fallback);
-    if (!index || typeof index !== "object" || !Array.isArray(index.items)) {
-      return await recoverCorruptKnowledgeIndex(projectPath, fallback);
-    }
-    return index;
-  } catch (error) {
-    if (error && error.code === "ENOENT") {
-      return fallback;
-    }
-    return recoverCorruptKnowledgeIndex(projectPath, fallback);
-  }
-}
-
-async function recoverCorruptKnowledgeIndex(projectPath, fallback) {
-  try {
-    const result = await rebuildKnowledgeIndex({ project_path: projectPath });
-    return result.index;
-  } catch {
-    return fallback;
-  }
+  const raw = await readKnowledgeIndexRaw(projectPath, fallback);
+  if (raw) return raw;
+  return withKnowledgeIndexLock(projectPath, () =>
+    recoverCorruptKnowledgeIndexLocked(projectPath, fallback)
+  );
 }
 
 const knowledgeIndexLocks = new Map();
@@ -1638,7 +1681,13 @@ export function safeFileId(value) {
 
 async function upsertKnowledgeIndex(projectPath, item) {
   return withKnowledgeIndexLock(projectPath, async () => {
-    const index = await readKnowledgeIndex(projectPath);
+    const fallback = {
+      version: KNOWLEDGE_INDEX_VERSION,
+      updatedAt: null,
+      items: []
+    };
+    const raw = await readKnowledgeIndexRaw(projectPath, fallback);
+    const index = raw || (await recoverCorruptKnowledgeIndexLocked(projectPath, fallback));
     const nextItems = index.items.filter((entry) => entry.id !== item.id);
     nextItems.push(indexKnowledgeItem(item));
     const nextIndex = {
@@ -1848,12 +1897,7 @@ export async function auditGovernance(input = {}) {
       );
     }
 
-    const outputChecks = await Promise.all(
-      (contract.outputPaths || []).map(async (outputPath) => {
-        const absolute = path.resolve(projectPath, outputPath);
-        return { path: outputPath, exists: await fileExists(absolute) };
-      })
-    );
+    const outputChecks = await checkOutputPaths(projectPath, contract.outputPaths);
     const missingOutputs = outputChecks.filter((item) => !item.exists);
     if ((contract.outputPaths || []).length === 0) {
       addFinding(
@@ -2057,12 +2101,7 @@ export async function nextStep(input = {}) {
     };
   }
 
-  const outputChecks = await Promise.all(
-    (contract.outputPaths || []).map(async (outputPath) => {
-      const absolute = path.resolve(projectPath, outputPath);
-      return { path: outputPath, exists: await fileExists(absolute) };
-    })
-  );
+  const outputChecks = await checkOutputPaths(projectPath, contract.outputPaths);
 
   const missingOutputs = outputChecks.filter((item) => !item.exists);
   if (last?.kind === "failure") {
@@ -2128,17 +2167,7 @@ export async function evalGate(input) {
     throw new Error("No active contract found. Pass contract_id or create a contract first.");
   }
 
-  const projectRootBoundary = projectPath.endsWith(path.sep) ? projectPath : `${projectPath}${path.sep}`;
-  const outputChecks = await Promise.all(
-    (contract.outputPaths || []).map(async (outputPath) => {
-      const absolute = path.resolve(projectPath, outputPath);
-      const insideProject = absolute === projectPath || absolute.startsWith(projectRootBoundary);
-      if (!insideProject) {
-        return { path: outputPath, exists: false, outOfScope: true };
-      }
-      return { path: outputPath, exists: await fileExists(absolute) };
-    })
-  );
+  const outputChecks = await checkOutputPaths(projectPath, contract.outputPaths);
   const missingOutputs = outputChecks.filter((item) => !item.exists);
   const checked = new Set(input.checked_conditions || []);
   const uncheckedConditions = (contract.completionConditions || []).filter((condition) => !checked.has(condition));

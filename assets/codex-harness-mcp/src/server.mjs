@@ -45,6 +45,7 @@ import {
   listHarnessResources,
   readHarnessResource
 } from "./mcp-features.mjs";
+import { validateAgainstSchema } from "./schema-validate.mjs";
 
 const PACKAGE_JSON = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8")
@@ -862,6 +863,12 @@ async function handleToolCall(message) {
   }
 
   const args = rawArgs || {};
+
+  const validationError = validateAgainstSchema(tool.inputSchema, args, "args");
+  if (validationError) {
+    sendError(message.id, -32602, `Invalid params for "${name}": ${validationError}`);
+    return;
+  }
 
   try {
     const value = await tool.handler(args);

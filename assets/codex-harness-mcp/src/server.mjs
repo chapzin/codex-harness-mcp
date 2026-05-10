@@ -142,6 +142,7 @@ const tools = [
         output_paths: stringArray,
         verification_commands: stringArray,
         failure_taxonomy: stringArray,
+        parent_contract_id: { type: "string", description: "Optional id of a parent contract this one continues or follows up." },
         notes: { type: "string" }
       },
       additionalProperties: false

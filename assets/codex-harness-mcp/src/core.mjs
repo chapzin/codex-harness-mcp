@@ -564,6 +564,10 @@ export async function saveState(projectPath, state) {
 
 export async function migrateHarness(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  return withStateLock(projectPath, () => migrateHarnessLocked(projectPath));
+}
+
+async function migrateHarnessLocked(projectPath) {
   const stateFile = harnessPath(projectPath, "state.json");
   const existing = await readJson(stateFile, DEFAULT_STATE);
   const fromVersion = Number.isInteger(existing.version) ? existing.version : 0;
@@ -618,27 +622,49 @@ export async function migrateHarness(input = {}) {
     applied.push("state-v5-meta-harness-counters");
   }
 
-  if (fromVersion !== CURRENT_STATE_VERSION || applied.length > 0) {
-    migrated.events.push({
-      ts: nowIso(),
-      type: "state_migrated",
-      summary: `Harness state migrated from v${fromVersion} to v${CURRENT_STATE_VERSION}.`
-    });
-    migrated.events = migrated.events.slice(-80);
-    await writeJson(stateFile, migrated);
-    await appendJsonl(harnessPath(projectPath, "migrations", `${today()}.jsonl`), {
-      ts: nowIso(),
+  if (applied.length === 0) {
+    return {
+      projectPath,
       fromVersion,
       toVersion: CURRENT_STATE_VERSION,
-      applied
-    });
+      applied,
+      state: migrated,
+      backupPath: null
+    };
   }
+
+  let backupPath = null;
+  try {
+    const stat = await fs.stat(stateFile);
+    if (stat.isFile()) {
+      backupPath = harnessPath(projectPath, `state.v${fromVersion}.backup.${Date.now()}.json`);
+      await fs.copyFile(stateFile, backupPath);
+    }
+  } catch (error) {
+    if (error && error.code !== "ENOENT") throw error;
+  }
+
+  migrated.events.push({
+    ts: nowIso(),
+    type: "state_migrated",
+    summary: `Harness state migrated from v${fromVersion} to v${CURRENT_STATE_VERSION}.${backupPath ? " Pre-migration snapshot saved." : ""}`
+  });
+  migrated.events = migrated.events.slice(-80);
+  await writeJson(stateFile, migrated);
+  await appendJsonl(harnessPath(projectPath, "migrations", `${today()}.jsonl`), {
+    ts: nowIso(),
+    fromVersion,
+    toVersion: CURRENT_STATE_VERSION,
+    applied,
+    backupPath
+  });
 
   return {
     projectPath,
     fromVersion,
     toVersion: CURRENT_STATE_VERSION,
     applied,
+    backupPath: backupPath || null,
     state: migrated
   };
 }

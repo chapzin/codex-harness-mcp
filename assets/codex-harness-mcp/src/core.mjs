@@ -1995,6 +1995,53 @@ export async function auditGovernance(input = {}) {
     } else if (passingGate) {
       addFinding("pass", "completion_gate_passed", "A completion gate passed for the contract.", [passingGate.id]);
     }
+
+    const maxSteps = contract.budget?.maxSteps;
+    if (Number.isFinite(maxSteps) && maxSteps > 0) {
+      const stepCount = contractTraces.length;
+      if (stepCount >= maxSteps) {
+        addFinding(
+          "flag",
+          "budget_steps_exceeded",
+          `Contract step budget exceeded (${stepCount}/${maxSteps}).`,
+          [contract.id, `steps=${stepCount}`, `maxSteps=${maxSteps}`],
+          "Close the contract with a completion gate or open a follow-up contract instead of widening this one."
+        );
+      } else if (stepCount >= Math.ceil(maxSteps * 0.8)) {
+        addFinding(
+          "flag",
+          "budget_steps_near_limit",
+          `Contract step budget near limit (${stepCount}/${maxSteps}).`,
+          [contract.id, `steps=${stepCount}`, `maxSteps=${maxSteps}`],
+          "Narrow remaining work and prepare to close the contract."
+        );
+      }
+    }
+
+    const maxMinutes = contract.budget?.maxMinutes;
+    if (Number.isFinite(maxMinutes) && maxMinutes > 0 && contract.createdAt) {
+      const createdMs = Date.parse(contract.createdAt);
+      if (Number.isFinite(createdMs)) {
+        const elapsedMinutes = (Date.now() - createdMs) / 60000;
+        if (elapsedMinutes >= maxMinutes) {
+          addFinding(
+            "flag",
+            "budget_time_exceeded",
+            `Contract time budget exceeded (${elapsedMinutes.toFixed(1)}/${maxMinutes} min).`,
+            [contract.id, `elapsedMinutes=${elapsedMinutes.toFixed(1)}`, `maxMinutes=${maxMinutes}`],
+            "Close or replace the contract; long-lived contracts lose narrowness."
+          );
+        } else if (elapsedMinutes >= maxMinutes * 0.8) {
+          addFinding(
+            "flag",
+            "budget_time_near_limit",
+            `Contract time budget near limit (${elapsedMinutes.toFixed(1)}/${maxMinutes} min).`,
+            [contract.id, `elapsedMinutes=${elapsedMinutes.toFixed(1)}`, `maxMinutes=${maxMinutes}`],
+            "Prepare to close the contract or split remaining work."
+          );
+        }
+      }
+    }
   }
 
   const status = findings.some((finding) => finding.level === "block")

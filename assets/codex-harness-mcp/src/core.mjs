@@ -427,7 +427,14 @@ async function refuseSymlinkAt(filePath) {
 export async function writeJson(filePath, value) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await refuseSymlinkAt(filePath);
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const tmpPath = `${filePath}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
+  try {
+    await fs.writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await fs.rename(tmpPath, filePath);
+  } catch (error) {
+    await fs.rm(tmpPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function appendJsonl(filePath, value) {

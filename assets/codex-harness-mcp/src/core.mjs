@@ -1747,19 +1747,31 @@ function buildKnowledgeIndex(items) {
   };
 }
 
+const KNOWLEDGE_INDEX_MAX_TERMS = 40;
+const KNOWLEDGE_INDEX_MAX_TOKEN_LENGTH = 80;
+const KNOWLEDGE_INDEX_SUMMARY_PREVIEW = 280;
+
 function indexKnowledgeItem(item) {
   const searchable = knowledgeSearchText(item);
   const tokens = tokenize(searchable);
-  const termCounts = {};
+  const fullCounts = {};
   for (const token of tokens) {
-    termCounts[token] = (termCounts[token] || 0) + 1;
+    if (token.length > KNOWLEDGE_INDEX_MAX_TOKEN_LENGTH) continue;
+    fullCounts[token] = (fullCounts[token] || 0) + 1;
   }
+  const topEntries = Object.entries(fullCounts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, KNOWLEDGE_INDEX_MAX_TERMS);
+  const termCounts = Object.fromEntries(topEntries);
+  const summary = item.summary && item.summary.length > KNOWLEDGE_INDEX_SUMMARY_PREVIEW
+    ? `${item.summary.slice(0, KNOWLEDGE_INDEX_SUMMARY_PREVIEW)}…`
+    : item.summary;
   return {
     id: item.id,
     ts: item.ts,
     kind: item.kind,
     title: item.title,
-    summary: item.summary,
+    summary,
     tags: item.tags || [],
     confidence: item.confidence,
     source: item.source || {},

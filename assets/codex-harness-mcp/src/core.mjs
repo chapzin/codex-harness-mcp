@@ -10,7 +10,10 @@ export const CURRENT_STATE_VERSION = 5;
 const MAX_TEXT_LENGTH = 12000;
 const MAX_ITEM_LENGTH = 2000;
 const MAX_LIST_ITEMS = 50;
-const KNOWLEDGE_INDEX_VERSION = 1;
+const KNOWLEDGE_INDEX_VERSION = 2;
+const BM25_K1 = 1.5;
+const BM25_B = 0.75;
+const RRF_K = 60;
 const KNOWLEDGE_KINDS = [
   "knowledge",
   "research",
@@ -1542,27 +1545,43 @@ export async function queryKnowledge(input = {}) {
     index = await rebuildKnowledgeIndex({ project_path: projectPath }).then((result) => result.index);
   }
 
+  const corpus = {
+    documentFrequencies: index.documentFrequencies || {},
+    avgTokenLength: index.avgTokenLength || 0,
+    totalDocs: index.totalDocs ?? index.items.length
+  };
+
+  const eligible = index.items.filter((entry) => {
+    if (filterTags.size === 0) return true;
+    return (entry.tags || []).some((tag) => filterTags.has(String(tag).toLowerCase()));
+  });
+
+  const bm25Ranks = rankBySignal(eligible, (entry) => bm25Score(entry, queryTokens, corpus));
+  const titleRanks = rankBySignal(eligible, (entry) => titleMatchScore(entry, queryTokens));
+  const tagRanks = rankBySignal(eligible, (entry) => tagMatchScore(entry, queryTokens));
+
+  const fused = rrfFuseRanks(eligible, [bm25Ranks, titleRanks, tagRanks]);
+
   const scored = [];
-  for (const entry of index.items) {
-    if (filterTags.size > 0 && !(entry.tags || []).some((tag) => filterTags.has(tag.toLowerCase()))) {
-      continue;
-    }
-
-    const score = scoreKnowledgeEntry(entry, queryTokens, query);
-    if (score <= 0 && queryTokens.length > 0) {
-      continue;
-    }
-
+  for (const { entry, score: rrfScore } of fused) {
+    if (queryTokens.length > 0 && rrfScore <= 0) continue;
+    const bodyScore = queryTokens.length === 0 ? 1 : bm25Score(entry, queryTokens, corpus);
     const item = await readKnowledgeItem(projectPath, entry.id);
     if (!item) continue;
     scored.push({
-      score,
+      score: queryTokens.length === 0 ? 1 : rrfScore,
+      bodyScore,
       item,
       snippet: makeKnowledgeSnippet(item, queryTokens)
     });
   }
 
-  scored.sort((a, b) => b.score - a.score || String(b.item.ts).localeCompare(String(a.item.ts)));
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.bodyScore - a.bodyScore ||
+      String(b.item.ts).localeCompare(String(a.item.ts))
+  );
   await mutateState(projectPath, (state) => {
     state.counters.knowledgeQueries += 1;
     state.events.push({
@@ -1657,7 +1676,13 @@ export async function readKnowledgeIndex(projectPath) {
     items: []
   };
   const raw = await readKnowledgeIndexRaw(projectPath, fallback);
-  if (raw) return raw;
+  if (raw && raw.version === KNOWLEDGE_INDEX_VERSION) return raw;
+  if (raw && raw.version !== KNOWLEDGE_INDEX_VERSION) {
+    const rebuilt = await withKnowledgeIndexLock(projectPath, () =>
+      rebuildKnowledgeIndexLocked(projectPath)
+    );
+    return rebuilt.index;
+  }
   return withKnowledgeIndexLock(projectPath, () =>
     recoverCorruptKnowledgeIndexLocked(projectPath, fallback)
   );
@@ -2562,10 +2587,15 @@ async function upsertKnowledgeIndex(projectPath, item) {
     const index = raw || (await recoverCorruptKnowledgeIndexLocked(projectPath, fallback));
     const nextItems = index.items.filter((entry) => entry.id !== item.id);
     nextItems.push(indexKnowledgeItem(item));
+    nextItems.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+    const stats = computeCorpusStats(nextItems);
     const nextIndex = {
       version: KNOWLEDGE_INDEX_VERSION,
       updatedAt: nowIso(),
-      items: nextItems.sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+      items: nextItems,
+      documentFrequencies: stats.documentFrequencies,
+      avgTokenLength: stats.avgTokenLength,
+      totalDocs: stats.totalDocs
     };
     await writeJson(knowledgeIndexPath(projectPath), nextIndex);
     return nextIndex;
@@ -2573,29 +2603,31 @@ async function upsertKnowledgeIndex(projectPath, item) {
 }
 
 function buildKnowledgeIndex(items) {
+  const indexedItems = items.map(indexKnowledgeItem).sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  const stats = computeCorpusStats(indexedItems);
   return {
     version: KNOWLEDGE_INDEX_VERSION,
     updatedAt: nowIso(),
-    items: items.map(indexKnowledgeItem).sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+    items: indexedItems,
+    documentFrequencies: stats.documentFrequencies,
+    avgTokenLength: stats.avgTokenLength,
+    totalDocs: stats.totalDocs
   };
 }
 
-const KNOWLEDGE_INDEX_MAX_TERMS = 40;
 const KNOWLEDGE_INDEX_MAX_TOKEN_LENGTH = 80;
 const KNOWLEDGE_INDEX_SUMMARY_PREVIEW = 280;
 
 function indexKnowledgeItem(item) {
   const searchable = knowledgeSearchText(item);
   const tokens = tokenize(searchable);
-  const fullCounts = {};
+  const termCounts = {};
   for (const token of tokens) {
     if (token.length > KNOWLEDGE_INDEX_MAX_TOKEN_LENGTH) continue;
-    fullCounts[token] = (fullCounts[token] || 0) + 1;
+    termCounts[token] = (termCounts[token] || 0) + 1;
   }
-  const topEntries = Object.entries(fullCounts)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, KNOWLEDGE_INDEX_MAX_TERMS);
-  const termCounts = Object.fromEntries(topEntries);
+  const titleTokens = new Set(tokenize(item.title || ""));
+  const tagTokens = new Set((item.tags || []).flatMap((tag) => tokenize(String(tag))));
   const summary = item.summary && item.summary.length > KNOWLEDGE_INDEX_SUMMARY_PREVIEW
     ? `${item.summary.slice(0, KNOWLEDGE_INDEX_SUMMARY_PREVIEW)}…`
     : item.summary;
@@ -2609,8 +2641,91 @@ function indexKnowledgeItem(item) {
     confidence: item.confidence,
     source: item.source || {},
     termCounts,
-    tokenTotal: tokens.length
+    tokenTotal: tokens.length,
+    titleTokens: Array.from(titleTokens),
+    tagTokens: Array.from(tagTokens)
   };
+}
+
+function computeCorpusStats(indexedItems) {
+  const documentFrequencies = {};
+  let totalTokens = 0;
+  for (const entry of indexedItems) {
+    totalTokens += entry.tokenTotal || 0;
+    const seen = new Set(Object.keys(entry.termCounts || {}));
+    for (const token of seen) {
+      documentFrequencies[token] = (documentFrequencies[token] || 0) + 1;
+    }
+  }
+  const totalDocs = indexedItems.length;
+  const avgTokenLength = totalDocs > 0 ? totalTokens / totalDocs : 0;
+  return { documentFrequencies, avgTokenLength, totalDocs };
+}
+
+function bm25Idf(documentFrequency, totalDocs) {
+  if (!totalDocs || totalDocs <= 0) return 0;
+  const df = Math.max(0, documentFrequency || 0);
+  return Math.log(1 + (totalDocs - df + 0.5) / (df + 0.5));
+}
+
+function bm25Score(entry, queryTokens, corpus) {
+  if (!queryTokens || queryTokens.length === 0) return 0;
+  const docLength = entry.tokenTotal || 0;
+  const avgdl = corpus.avgTokenLength || 1;
+  const totalDocs = corpus.totalDocs || 1;
+  let score = 0;
+  for (const token of queryTokens) {
+    const tf = entry.termCounts?.[token] || 0;
+    if (tf === 0) continue;
+    const df = corpus.documentFrequencies?.[token] || 0;
+    const idf = bm25Idf(df, totalDocs);
+    const numerator = tf * (BM25_K1 + 1);
+    const denominator = tf + BM25_K1 * (1 - BM25_B + BM25_B * (docLength / avgdl));
+    score += idf * (numerator / (denominator || 1));
+  }
+  return score;
+}
+
+function titleMatchScore(entry, queryTokens) {
+  if (!queryTokens || queryTokens.length === 0) return 0;
+  const titleSet = new Set(entry.titleTokens || []);
+  let score = 0;
+  for (const token of queryTokens) {
+    if (titleSet.has(token)) score += 1;
+  }
+  return score;
+}
+
+function tagMatchScore(entry, queryTokens) {
+  if (!queryTokens || queryTokens.length === 0) return 0;
+  const tagSet = new Set(entry.tagTokens || []);
+  let score = 0;
+  for (const token of queryTokens) {
+    if (tagSet.has(token)) score += 1;
+  }
+  return score;
+}
+
+function rankBySignal(items, signalFn) {
+  const scored = items.map((entry) => ({ entry, score: signalFn(entry) }));
+  scored.sort((a, b) => b.score - a.score);
+  const ranks = new Map();
+  for (let i = 0; i < scored.length; i++) {
+    if (scored[i].score <= 0) continue;
+    ranks.set(scored[i].entry.id, i + 1);
+  }
+  return ranks;
+}
+
+function rrfFuseRanks(items, rankMaps) {
+  return items.map((entry) => {
+    let score = 0;
+    for (const ranks of rankMaps) {
+      const r = ranks.get(entry.id);
+      if (r !== undefined) score += 1 / (RRF_K + r);
+    }
+    return { entry, score };
+  });
 }
 
 function knowledgeSearchText(item) {
@@ -2636,23 +2751,6 @@ function tokenize(value) {
     .split(/[^a-z0-9_./-]+/g)
     .filter((token) => token.length >= 2 && !STOP_WORDS.has(token))
     .slice(0, 400);
-}
-
-function scoreKnowledgeEntry(entry, queryTokens, rawQuery) {
-  if (!rawQuery && queryTokens.length === 0) {
-    return 1;
-  }
-
-  const title = String(entry.title || "").toLowerCase();
-  const tags = (entry.tags || []).map((tag) => String(tag).toLowerCase());
-  let score = 0;
-  for (const token of queryTokens) {
-    score += entry.termCounts?.[token] || 0;
-    if (title.includes(token)) score += 4;
-    if (tags.includes(token)) score += 3;
-    if (entry.kind === token) score += 2;
-  }
-  return score;
 }
 
 function makeKnowledgeSnippet(item, queryTokens) {

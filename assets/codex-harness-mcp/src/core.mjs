@@ -23,6 +23,65 @@ const KNOWLEDGE_KINDS = [
 const CONFIDENCE_VALUES = ["low", "medium", "high", "unknown"];
 const EVAL_SPLITS = ["optimization", "holdout", "regression", "production", "unknown"];
 const EVAL_VERDICTS = ["pass", "fail", "unknown"];
+
+const NETWORK_FS_TYPES = new Set([
+  "nfs", "nfs4", "nfsv4",
+  "cifs", "smbfs", "smb", "smb2", "smb3"
+]);
+
+function parseProcMounts(text) {
+  const entries = [];
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length < 3) continue;
+    const mountPoint = parts[1].replace(/\\040/g, " ");
+    entries.push({ mountPoint, fsType: parts[2] });
+  }
+  return entries;
+}
+
+export async function checkLocalFilesystem(projectPath, opts = {}) {
+  const procPath = opts.procMountsPath || process.env.HARNESS_PROC_MOUNTS_PATH || "/proc/mounts";
+  const usingDefaultProc = !opts.procMountsPath && !process.env.HARNESS_PROC_MOUNTS_PATH;
+  if (usingDefaultProc && process.platform !== "linux") {
+    return { isLocal: true, fsType: "unknown", mountPoint: null, warning: null };
+  }
+  let text;
+  try {
+    text = await fs.readFile(procPath, "utf8");
+  } catch {
+    return { isLocal: true, fsType: "unknown", mountPoint: null, warning: null };
+  }
+  const entries = parseProcMounts(text);
+  const resolved = path.resolve(String(projectPath || ""));
+  let best = null;
+  for (const entry of entries) {
+    const mp = entry.mountPoint;
+    const isMatch =
+      resolved === mp ||
+      mp === "/" ||
+      resolved.startsWith(mp.endsWith("/") ? mp : mp + "/");
+    if (!isMatch) continue;
+    if (!best || mp.length > best.mountPoint.length) {
+      best = entry;
+    }
+  }
+  if (!best) {
+    return { isLocal: true, fsType: "unknown", mountPoint: null, warning: null };
+  }
+  const fsType = best.fsType;
+  if (NETWORK_FS_TYPES.has(String(fsType).toLowerCase())) {
+    return {
+      isLocal: false,
+      fsType,
+      mountPoint: best.mountPoint,
+      warning: `Project path ${resolved} is on a network filesystem (${fsType} at ${best.mountPoint}). File locks and atomic writes may be unreliable. Move the project to a local filesystem, or set HARNESS_REQUIRE_LOCAL_FS=1 to fail closed.`
+    };
+  }
+  return { isLocal: true, fsType, mountPoint: best.mountPoint, warning: null };
+}
 const HARNESS_PROFILE_MODES = [
   "minimal",
   "standard",
@@ -453,6 +512,13 @@ export async function appendJsonl(filePath, value) {
 
 export async function ensureHarness(input = {}) {
   const projectPath = resolveProjectPath(input.project_path);
+  const fsCheck = await checkLocalFilesystem(projectPath);
+  if (!fsCheck.isLocal) {
+    if (process.env.HARNESS_REQUIRE_LOCAL_FS === "1") {
+      throw new Error(fsCheck.warning);
+    }
+    process.stderr.write(`harness warning: ${fsCheck.warning}\n`);
+  }
   const root = harnessPath(projectPath);
   await fs.mkdir(root, { recursive: true });
   await Promise.all([

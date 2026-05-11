@@ -36,8 +36,10 @@ import {
   recordResearchSource,
   recordVerification,
   recordTrace,
+  queryEvents,
   recordA2ADelegation,
   recordElicitationInteraction,
+  recordEvent,
   recordOrchestrationPlan,
   recordSamplingInteraction,
   recordSubagentCompletion,
@@ -458,6 +460,43 @@ const tools = [
         entry: agentSafeTrace(result.entry)
       };
     }
+  },
+  {
+    name: "harness_record_event",
+    description: "Append an event to the SQLite WAL event-sourcing log (.codex-harness/events.db). Append-only audit log enabling replay and recovery. Requires Node.js >= 22.5 (node:sqlite built-in).",
+    inputSchema: {
+      type: "object",
+      required: ["kind"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        kind: { type: "string", minLength: 1, description: "Event taxonomy label (e.g. tool.invoked, gate.evaluated)." },
+        summary: { type: "string" },
+        payload: { description: "Arbitrary structured payload serialized to JSON." },
+        parent_event_id: { type: "integer", minimum: 1, description: "Optional link to a prior event." }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: recordEvent
+  },
+  {
+    name: "harness_query_events",
+    description: "Query the SQLite WAL event-sourcing log with optional filters (contract_id, kind, since_id, since_ts, limit). Results ordered by event_id ascending for deterministic replay. Requires Node.js >= 22.5.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        kind: { type: "string" },
+        since_id: { type: "integer", minimum: 1 },
+        since_ts: { type: "string" },
+        limit: { type: "integer", minimum: 1, maximum: 1000, default: 100 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: queryEvents
   },
   {
     name: "harness_record_a2a_delegation",

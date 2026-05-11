@@ -1,6 +1,11 @@
 import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import {
+  appendEvent as appendEventLog,
+  queryEventLog,
+  isEventLogAvailable
+} from "./event-log.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
@@ -1472,6 +1477,49 @@ function normalizeA2ADelegationStatus(value) {
     );
   }
   return lower;
+}
+
+export async function recordEvent(input = {}) {
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
+  if (!isEventLogAvailable()) {
+    throw new Error("recordEvent requires node:sqlite (Node.js >= 22.5).");
+  }
+  const kind = sanitizeText(input.kind, { maxLength: 200 });
+  if (!kind) throw new Error("kind is required.");
+  const contractIdRaw = input.contract_id;
+  let contractId = sanitizeNullableText(contractIdRaw, { maxLength: 200 });
+  if (!contractId) {
+    const state = await loadState(projectPath);
+    contractId = state.activeContractId || null;
+  }
+  const summary = sanitizeNullableText(input.summary, { maxLength: 2000 });
+  const parentEventId = Number.isInteger(input.parent_event_id) && input.parent_event_id > 0
+    ? input.parent_event_id
+    : null;
+  const event = appendEventLog(harnessRoot, {
+    contractId,
+    kind,
+    summary,
+    payload: input.payload,
+    parentEventId
+  });
+  return { projectPath, event };
+}
+
+export async function queryEvents(input = {}) {
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
+  if (!isEventLogAvailable()) {
+    throw new Error("queryEvents requires node:sqlite (Node.js >= 22.5).");
+  }
+  const filters = {
+    contractId: sanitizeNullableText(input.contract_id, { maxLength: 200 }),
+    kind: sanitizeNullableText(input.kind, { maxLength: 200 }),
+    sinceId: Number.isInteger(input.since_id) ? input.since_id : null,
+    sinceTs: sanitizeNullableText(input.since_ts, { maxLength: 60 }),
+    limit: Number.isInteger(input.limit) ? input.limit : 100
+  };
+  const events = queryEventLog(harnessRoot, filters);
+  return { projectPath, events };
 }
 
 export async function recordA2ADelegation(input = {}) {

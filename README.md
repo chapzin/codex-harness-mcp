@@ -435,6 +435,7 @@ Stored user/source content is returned inside `<untrusted-data>` boundaries so t
 
 | Version | Highlights |
 | --- | --- |
+| `0.2.0` | Hardening series rounds 1-9: cross-process file lock for multi-client safety, atomic writes via temp+rename with symlink refusal, JSON Schema validation, state.json corruption recovery with backup, in-process mutex with map cleanup, path scope enforcement, knowledge index bounded growth, resource pagination, ID space widened 24→48 bits, Unicode bidi/format char stripping, protocolVersion allow-list, `cwd` over `PWD` precedence, migration backup rotation, tmp orphan reaper. |
 | `0.1.10` | Project-local governance policy, `PASS/FLAG/BLOCK` audit/report, governance resource/prompt, and release-quality documentation gate. |
 | `0.1.9` | Multi-client MCP installer/config generator for Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code, Cline, Windsurf, and best-effort Roo project config. |
 | `0.1.8` | Trace-level observability report, AgentOps review prompt/resource, Gradient Flow guidance. |

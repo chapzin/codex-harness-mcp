@@ -1,6 +1,6 @@
 {
   "name": "codex-harness-mcp",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Dependency-free local MCP server for Codex harness engineering: contracts, memory, traces, governance audits, observability reports, evals, proposals, natural-language specs, and gates.",
   "type": "module",
   "bin": {

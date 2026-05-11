@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import {
   agentSafeEvalCase,
   agentSafeEvalRun,
@@ -46,6 +47,57 @@ import {
 
 const JSON_MIME = "application/json";
 const MARKDOWN_MIME = "text/markdown";
+
+const resourceCache = new Map();
+
+function resourceCacheLimit() {
+  const raw = Number(process.env.HARNESS_RESOURCE_CACHE_LIMIT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 32;
+}
+
+function resourceCacheTtlMs() {
+  const raw = Number(process.env.HARNESS_RESOURCE_CACHE_TTL_MS);
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 500;
+}
+
+function cacheKey(projectPath, uri) {
+  return `${projectPath}::${uri}`;
+}
+
+function computeEtag(text) {
+  return "sha256:" + createHash("sha256").update(String(text)).digest("hex");
+}
+
+function getCachedResource(projectPath, uri) {
+  const key = cacheKey(projectPath, uri);
+  const entry = resourceCache.get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    resourceCache.delete(key);
+    return null;
+  }
+  resourceCache.delete(key);
+  resourceCache.set(key, entry);
+  return entry.payload;
+}
+
+function setCachedResource(projectPath, uri, payload) {
+  const key = cacheKey(projectPath, uri);
+  resourceCache.set(key, {
+    payload,
+    expiresAt: Date.now() + resourceCacheTtlMs()
+  });
+  const limit = resourceCacheLimit();
+  while (resourceCache.size > limit) {
+    const oldestKey = resourceCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    resourceCache.delete(oldestKey);
+  }
+}
+
+export function clearResourceCache() {
+  resourceCache.clear();
+}
 
 const staticResources = [
   {
@@ -427,6 +479,16 @@ function decodeResourcesCursor(cursor) {
 
 export async function readHarnessResource(uri, input = {}) {
   const projectPath = resolveProjectPath(input.project_path);
+  const cached = getCachedResource(projectPath, uri);
+  if (cached) {
+    return cached;
+  }
+  const payload = await computeHarnessResource(uri, projectPath, input);
+  setCachedResource(projectPath, uri, payload);
+  return payload;
+}
+
+async function computeHarnessResource(uri, projectPath, input) {
   const parsed = parseHarnessUri(uri);
 
   if (parsed.kind === "state") {
@@ -848,14 +910,18 @@ function parseHarnessUri(uri) {
 }
 
 function resourceText(uri, mimeType, value, stringify = true) {
+  const text = stringify ? `${JSON.stringify(value, null, 2)}\n` : value;
+  const etag = computeEtag(text);
   return {
     contents: [
       {
         uri,
         mimeType,
-        text: stringify ? `${JSON.stringify(value, null, 2)}\n` : value
+        text,
+        _meta: { etag }
       }
-    ]
+    ],
+    _meta: { etag }
   };
 }
 

@@ -385,18 +385,44 @@ export async function listHarnessResources(input = {}) {
     annotations: { audience: ["assistant"], priority: 0.9 }
   }));
 
-  return {
-    resources: [
-      ...staticResources,
-      ...contractResources,
-      ...knowledgeResources,
-      ...evalCaseResources,
-      ...evalRunResources,
-      ...profileResources,
-      ...proposalResources,
-      ...promotionDecisionResources
-    ]
-  };
+  const allResources = [
+    ...staticResources,
+    ...contractResources,
+    ...knowledgeResources,
+    ...evalCaseResources,
+    ...evalRunResources,
+    ...profileResources,
+    ...proposalResources,
+    ...promotionDecisionResources
+  ];
+
+  const pageSize = Math.max(1, Math.min(input.page_size || 200, 500));
+  const cursorOffset = decodeResourcesCursor(input.cursor);
+  const start = Math.min(Math.max(cursorOffset, 0), allResources.length);
+  const end = Math.min(start + pageSize, allResources.length);
+  const page = allResources.slice(start, end);
+  const result = { resources: page };
+  if (end < allResources.length) {
+    result.nextCursor = encodeResourcesCursor(end);
+  }
+  return result;
+}
+
+function encodeResourcesCursor(offset) {
+  return Buffer.from(`offset:${offset}`, "utf8").toString("base64url");
+}
+
+function decodeResourcesCursor(cursor) {
+  if (!cursor || typeof cursor !== "string") return 0;
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const match = /^offset:(\d+)$/.exec(decoded);
+    if (!match) return 0;
+    const n = Number.parseInt(match[1], 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function readHarnessResource(uri, input = {}) {

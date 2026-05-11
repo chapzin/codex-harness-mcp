@@ -880,7 +880,7 @@ async function handleToolCall(message) {
       content: [
         {
           type: "text",
-          text: error.message || String(error)
+          text: redactProjectPaths(error.message || String(error))
         }
       ]
     });
@@ -910,11 +910,21 @@ function sendResult(id, result) {
   send({ jsonrpc: "2.0", id, result });
 }
 
+function redactProjectPaths(text) {
+  let out = String(text == null ? "" : text);
+  for (const candidate of [process.env.CODEX_WORKDIR, process.env.PWD, process.cwd()]) {
+    if (candidate && candidate.length > 1) {
+      out = out.split(candidate).join("<project>");
+    }
+  }
+  return out;
+}
+
 function sendError(id, code, message) {
   send({
     jsonrpc: "2.0",
     id,
-    error: { code, message }
+    error: { code, message: redactProjectPaths(message) }
   });
 }
 

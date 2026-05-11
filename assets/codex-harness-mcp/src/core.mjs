@@ -2366,6 +2366,39 @@ export async function auditGovernance(input = {}) {
       addFinding("pass", "completion_gate_passed", "A completion gate passed for the contract.", [passingGate.id]);
     }
 
+    const tierRank = { low: 0, medium: 1, high: 2 };
+    const maxTraceTier = contractTraces.reduce((max, trace) => {
+      const tier = tierRank[trace.riskTier] !== undefined ? trace.riskTier : "low";
+      return tierRank[tier] > tierRank[max] ? tier : max;
+    }, "low");
+
+    if (maxTraceTier === "high") {
+      const highTraces = contractTraces.filter((t) => t.riskTier === "high");
+      addFinding(
+        "block",
+        "injection_high_risk",
+        "One or more contract traces flagged as HIGH injection risk by the static scanner.",
+        highTraces.slice(0, 3).map((t) => t.id),
+        "Investigate the flagged traces; consider revoking the contract or quarantining the evidence before merge."
+      );
+    } else if (maxTraceTier === "medium") {
+      const mediumTraces = contractTraces.filter((t) => t.riskTier === "medium");
+      addFinding(
+        "flag",
+        "injection_medium_risk",
+        "One or more contract traces flagged as MEDIUM injection risk by the static scanner.",
+        mediumTraces.slice(0, 3).map((t) => t.id),
+        "Review the flagged traces; if benign, document the false-positive context."
+      );
+    } else if (contractTraces.length > 0) {
+      addFinding(
+        "pass",
+        "injection_scan_clean",
+        "All contract traces have low (clean) injection risk tier.",
+        [`scannedTraces=${contractTraces.length}`]
+      );
+    }
+
     const maxSteps = contract.budget?.maxSteps;
     if (Number.isFinite(maxSteps) && maxSteps > 0) {
       const stepCount = contractTraces.length;

@@ -1100,6 +1100,130 @@ export async function recordSamplingInteraction(input = {}) {
   });
 }
 
+const SUBAGENT_DISPATCH_METHODS = new Set([
+  "parallel",
+  "sequential",
+  "background"
+]);
+
+const SUBAGENT_COMPLETION_STATUS = new Set([
+  "success",
+  "failure",
+  "cancelled",
+  "timeout"
+]);
+
+function normalizeSubagentDispatchMethod(value) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `dispatch_method is required and must be one of [parallel|sequential|background]; got ${typeof value}.`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!SUBAGENT_DISPATCH_METHODS.has(lower)) {
+    throw new Error(
+      `Invalid dispatch_method "${value}". Expected one of [parallel|sequential|background].`
+    );
+  }
+  return lower;
+}
+
+function normalizeSubagentCompletionStatus(value) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `status is required and must be one of [success|failure|cancelled|timeout]; got ${typeof value}.`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!SUBAGENT_COMPLETION_STATUS.has(lower)) {
+    throw new Error(
+      `Invalid status "${value}". Expected one of [success|failure|cancelled|timeout].`
+    );
+  }
+  return lower;
+}
+
+export async function recordSubagentDispatch(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const subagentId = sanitizeText(input.subagent_id, { maxLength: 200 });
+  if (!subagentId) throw new Error("subagent_id (subagentId) is required.");
+  const taskDescription = sanitizeText(input.task_description, { maxLength: 2000 });
+  if (!taskDescription) throw new Error("task_description (taskDescription) is required.");
+  const dispatchMethod = normalizeSubagentDispatchMethod(input.dispatch_method);
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "subagent_dispatch",
+      subagentId,
+      taskDescription,
+      worktreePath: sanitizeNullableText(input.worktree_path, { maxLength: 1000 }),
+      branch: sanitizeNullableText(input.branch, { maxLength: 200 }),
+      parentContractId: sanitizeNullableText(input.parent_contract_id, { maxLength: 200 }),
+      dispatchMethod,
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    applyInjectionScan(entry, entry.taskDescription, entry.notes);
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "subagent_dispatch_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      subagentId: entry.subagentId,
+      dispatchMethod: entry.dispatchMethod
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
+export async function recordSubagentCompletion(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const status = normalizeSubagentCompletionStatus(input.status);
+  const durationMs = Number.isInteger(input.duration_ms) && input.duration_ms >= 0 ? input.duration_ms : null;
+  const filesChanged = Array.isArray(input.files_changed)
+    ? input.files_changed
+        .map((entry) => sanitizeText(entry, { maxLength: 1000 }))
+        .filter(Boolean)
+    : [];
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "subagent_completion",
+      dispatchTraceId: sanitizeNullableText(input.dispatch_trace_id, { maxLength: 200 }),
+      status,
+      durationMs,
+      summary: sanitizeNullableText(input.summary, { maxLength: 2000 }),
+      filesChanged,
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    applyInjectionScan(entry, entry.summary, entry.notes);
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "subagent_completion_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      dispatchTraceId: entry.dispatchTraceId,
+      status: entry.status
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
 const ORCHESTRATION_PATTERNS = new Set([
   "supervisor",
   "swarm",

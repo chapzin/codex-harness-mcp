@@ -40,6 +40,8 @@ import {
   recordElicitationInteraction,
   recordOrchestrationPlan,
   recordSamplingInteraction,
+  recordSubagentCompletion,
+  recordSubagentDispatch,
   recordSubagentHandoff,
   renderGovernanceReport,
   writeGovernancePolicy,
@@ -298,6 +300,67 @@ const tools = [
     outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await recordSamplingInteraction(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_subagent_dispatch",
+    description: "Record a subagent invocation as evidence (subagent_id, task_description, worktree_path, branch, parent_contract_id, dispatch_method). Storage-only; does not spawn subagents. Dispatch method enum: parallel|sequential|background.",
+    inputSchema: {
+      type: "object",
+      required: ["subagent_id", "task_description", "dispatch_method"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        subagent_id: { type: "string", minLength: 1 },
+        task_description: { type: "string", minLength: 1 },
+        worktree_path: { type: "string" },
+        branch: { type: "string" },
+        parent_contract_id: { type: "string" },
+        dispatch_method: {
+          type: "string",
+          enum: ["parallel", "sequential", "background"]
+        },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordSubagentDispatch(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_subagent_completion",
+    description: "Record a subagent outcome as evidence (dispatch_trace_id link, status, duration_ms, summary, files_changed). Storage-only; does not kill subagents. Status enum: success|failure|cancelled|timeout.",
+    inputSchema: {
+      type: "object",
+      required: ["status"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        dispatch_trace_id: { type: "string" },
+        status: {
+          type: "string",
+          enum: ["success", "failure", "cancelled", "timeout"]
+        },
+        duration_ms: { type: "integer", minimum: 0 },
+        summary: { type: "string" },
+        files_changed: stringArray,
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordSubagentCompletion(input);
       return {
         projectPath: result.projectPath,
         entry: agentSafeTrace(result.entry)

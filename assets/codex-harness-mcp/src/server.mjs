@@ -584,7 +584,21 @@ const tools = [
         trace_ids: stringArray,
         verification_ids: stringArray,
         regressions: stringArray,
-        notes: { type: "string" }
+        notes: { type: "string" },
+        k_shot_n: { type: "integer", minimum: 1, description: "Number of independent attempts for consistency measurement." },
+        k_shot_variance: { type: "number", minimum: 0, maximum: 1, description: "Variance across k-shot attempts; 0=identical, 1=uncorrelated." },
+        k_shot_p95: { type: "number", description: "95th percentile metric across k-shot attempts." },
+        holdout_split: {
+          type: "string",
+          enum: ["train", "validation", "holdout", "production"],
+          description: "Eval-case split this run was scored against (for contamination tracking)."
+        },
+        contamination_check: { type: "boolean", description: "Whether contamination detection was applied." },
+        reward_hack_flags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Suspicious patterns detected (e.g., test_file_read, gold_answer_leak, config_file_access)."
+        }
       },
       additionalProperties: false
     },

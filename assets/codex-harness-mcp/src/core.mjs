@@ -444,7 +444,15 @@ export function agentSafeEvalRun(run) {
     traceIds: untrustedList(run.traceIds, "evalRun.traceIds"),
     verificationIds: untrustedList(run.verificationIds, "evalRun.verificationIds"),
     regressions: untrustedList(run.regressions, "evalRun.regressions"),
-    notes: run.notes ? untrustedBlock(run.notes, "evalRun.notes") : null
+    notes: run.notes ? untrustedBlock(run.notes, "evalRun.notes") : null,
+    kShotN: run.kShotN ?? null,
+    kShotVariance: run.kShotVariance ?? null,
+    kShotP95: run.kShotP95 ?? null,
+    holdoutSplit: run.holdoutSplit ?? null,
+    contaminationCheck: run.contaminationCheck === true,
+    rewardHackFlags: Array.isArray(run.rewardHackFlags)
+      ? untrustedList(run.rewardHackFlags, "evalRun.rewardHackFlags")
+      : []
   };
 }
 
@@ -2369,6 +2377,48 @@ function buildEvalCase(input) {
   };
 }
 
+const EVAL_HOLDOUT_SPLITS = new Set(["train", "validation", "holdout", "production"]);
+
+function normalizeKShotN(value) {
+  if (value === undefined || value === null) return null;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`k_shot_n (kShotN) must be an integer >= 1; got ${value}.`);
+  }
+  return value;
+}
+
+function normalizeKShotVariance(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`k_shot_variance (kShotVariance) must be in range [0, 1]; got ${value}.`);
+  }
+  return value;
+}
+
+function normalizeKShotP95(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`k_shot_p95 (kShotP95) must be a finite number; got ${value}.`);
+  }
+  return value;
+}
+
+function normalizeHoldoutSplit(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new Error(
+      `holdout_split (holdoutSplit) must be one of [train|validation|holdout|production]; got ${typeof value}.`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!EVAL_HOLDOUT_SPLITS.has(lower)) {
+    throw new Error(
+      `Invalid holdout_split "${value}". Expected one of [train|validation|holdout|production].`
+    );
+  }
+  return lower;
+}
+
 function buildEvalRun(input) {
   const evalCaseId = sanitizeText(input.eval_case_id, { maxLength: 180 });
   if (!safeFileId(evalCaseId)) {
@@ -2402,7 +2452,15 @@ function buildEvalRun(input) {
     traceIds: sanitizeStringList(input.trace_ids, { maxLength: 180 }),
     verificationIds: sanitizeStringList(input.verification_ids, { maxLength: 180 }),
     regressions: sanitizeStringList(input.regressions, { maxLength: 1000 }),
-    notes: sanitizeNullableText(input.notes, { maxLength: 2000 })
+    notes: sanitizeNullableText(input.notes, { maxLength: 2000 }),
+    kShotN: normalizeKShotN(input.k_shot_n ?? input.kShotN),
+    kShotVariance: normalizeKShotVariance(input.k_shot_variance ?? input.kShotVariance),
+    kShotP95: normalizeKShotP95(input.k_shot_p95 ?? input.kShotP95),
+    holdoutSplit: normalizeHoldoutSplit(input.holdout_split ?? input.holdoutSplit),
+    contaminationCheck: input.contamination_check === true || input.contaminationCheck === true,
+    rewardHackFlags: sanitizeStringList(input.reward_hack_flags ?? input.rewardHackFlags, { maxLength: 200 })
+      .map((flag) => flag.trim())
+      .filter(Boolean)
   };
 }
 

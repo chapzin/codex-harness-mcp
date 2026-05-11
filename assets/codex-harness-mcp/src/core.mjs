@@ -507,6 +507,8 @@ export async function ensureHarness(input = {}) {
     });
   }
 
+  await reapOrphanTmpFiles(projectPath);
+
   return {
     projectPath,
     harnessRoot: root,
@@ -1073,12 +1075,23 @@ export async function readKnowledgeIndex(projectPath) {
 
 const knowledgeIndexLocks = new Map();
 function withKnowledgeIndexLock(projectPath, fn) {
-  return chainPerProjectLock(knowledgeIndexLocks, projectPath, fn);
+  return withCrossProcessLock(knowledgeIndexLocks, projectPath, "knowledge-index", fn);
 }
 
 const stateLocks = new Map();
 export function withStateLock(projectPath, fn) {
-  return chainPerProjectLock(stateLocks, projectPath, fn);
+  return withCrossProcessLock(stateLocks, projectPath, "state", fn);
+}
+
+function withCrossProcessLock(table, projectPath, kind, fn) {
+  return chainPerProjectLock(table, projectPath, async () => {
+    const lockFile = await acquireFileLock(projectPath, kind);
+    try {
+      return await fn();
+    } finally {
+      await releaseFileLock(lockFile);
+    }
+  });
 }
 
 function chainPerProjectLock(table, projectPath, fn) {
@@ -1092,6 +1105,81 @@ function chainPerProjectLock(table, projectPath, fn) {
     }
   });
   return next;
+}
+
+const FILE_LOCK_STALE_MS = 30_000;
+const FILE_LOCK_TIMEOUT_MS = 8_000;
+
+async function acquireFileLock(projectPath, kind) {
+  const lockFile = harnessPath(projectPath, `.${kind}.lock`);
+  await fs.mkdir(path.dirname(lockFile), { recursive: true });
+  const start = Date.now();
+  while (true) {
+    try {
+      const fh = await fs.open(lockFile, "wx");
+      try {
+        await fh.write(`${process.pid}\n${new Date().toISOString()}\n`);
+      } finally {
+        await fh.close();
+      }
+      return lockFile;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      try {
+        const stat = await fs.stat(lockFile);
+        if (Date.now() - stat.mtimeMs > FILE_LOCK_STALE_MS) {
+          await fs.rm(lockFile, { force: true }).catch(() => {});
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() - start > FILE_LOCK_TIMEOUT_MS) {
+        const timeout = new Error(`harness ${kind} lock timeout after ${FILE_LOCK_TIMEOUT_MS}ms`);
+        timeout.code = "HARNESS_LOCK_TIMEOUT";
+        throw timeout;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 + Math.floor(Math.random() * 75)));
+    }
+  }
+}
+
+async function releaseFileLock(lockFile) {
+  await fs.rm(lockFile, { force: true }).catch(() => {});
+}
+
+const TMP_REAP_MAX_AGE_MS = 5 * 60_000;
+const TMP_FILE_PATTERN = /\.tmp\.\d+\.[0-9a-f]+$/;
+
+async function reapOrphanTmpFiles(projectPath, maxAgeMs = TMP_REAP_MAX_AGE_MS) {
+  const root = harnessPath(projectPath);
+  const cutoff = Date.now() - maxAgeMs;
+  await reapWalk(root, cutoff, 0);
+}
+
+async function reapWalk(dir, cutoff, depth) {
+  if (depth > 3) return;
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await reapWalk(full, cutoff, depth + 1);
+    } else if (entry.isFile() && TMP_FILE_PATTERN.test(entry.name)) {
+      try {
+        const stat = await fs.stat(full);
+        if (stat.mtimeMs < cutoff) {
+          await fs.rm(full, { force: true }).catch(() => {});
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
 }
 
 export async function mutateState(projectPath, mutator) {

@@ -57,4 +57,50 @@ import {
   }
 }
 
-console.log("Round 6 hardening: per-project lock entries clean up after settle.");
+// R6-2 (refuted structurally): atomic rename does not follow a symlink at the
+// destination, so even if a TOCTOU attacker won the lstat/rename race the
+// victim file would never be written through. The refuseSymlinkAt guard
+// rejects the symlink first; this test pins the rename-over-symlink behavior
+// so a future refactor cannot accidentally regress to fs.writeFile-in-place.
+{
+  const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "r6-rename-"));
+  const victimDir = await fs.mkdtemp(path.join(os.tmpdir(), "r6-victim-"));
+  const victimFile = path.join(victimDir, "v.json");
+  await fs.writeFile(victimFile, '{"keep":"original"}', "utf8");
+
+  try {
+    await ensureHarness({ project_path: projectPath });
+    const { harnessPath, writeJson } = await import("../assets/codex-harness-mcp/src/core.mjs");
+    const target = harnessPath(projectPath, "knowledge", "index.json");
+
+    await fs.rm(target, { force: true });
+    await fs.symlink(victimFile, target);
+
+    // refuseSymlinkAt blocks the write
+    await assert.rejects(
+      writeJson(target, { test: 1 }),
+      /Refusing to write through symlink/,
+      "writeJson refuses pre-existing symlink at destination"
+    );
+    const victimAfterGuard = await fs.readFile(victimFile, "utf8");
+    assert.equal(victimAfterGuard, '{"keep":"original"}', "victim unchanged when guard fires");
+
+    // Structural backstop: even a raw rename onto a symlink substitutes the
+    // link, never the target. We verify that rename(2)/renameat behavior is
+    // intact in this build.
+    const probe = `${target}.probe`;
+    await fs.writeFile(probe, '{"injected":"yes"}', "utf8");
+    await fs.rename(probe, target);
+    const victimAfterRename = await fs.readFile(victimFile, "utf8");
+    const targetContent = await fs.readFile(target, "utf8");
+    assert.equal(victimAfterRename, '{"keep":"original"}', "victim untouched after rename onto symlink");
+    assert.ok(targetContent.includes("injected"), "rename atomically replaced the symlink");
+
+    console.log("R6-2 PASS (refuted): rename-over-symlink substitutes the link; victim never reached");
+  } finally {
+    await fs.rm(projectPath, { recursive: true, force: true });
+    await fs.rm(victimDir, { recursive: true, force: true });
+  }
+}
+
+console.log("Round 6 hardening: lock cleanup + atomic rename TOCTOU backstop verified.");

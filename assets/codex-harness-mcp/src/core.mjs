@@ -93,7 +93,11 @@ export function nowIso() {
 }
 
 export function resolveProjectPath(inputPath) {
-  const selected = inputPath || process.env.CODEX_WORKDIR || process.env.PWD || process.cwd();
+  // process.cwd() reflects the actual process working directory, which is what
+  // spawn({ cwd }) controls. process.env.PWD is the parent shell's notion and
+  // does not update on spawn — preferring it caused the server to write into
+  // the wrong project when the host launched it with a fresh cwd.
+  const selected = inputPath || process.env.CODEX_WORKDIR || process.cwd();
   return path.resolve(selected);
 }
 
@@ -570,6 +574,21 @@ export async function migrateHarness(input = {}) {
   return withStateLock(projectPath, () => migrateHarnessLocked(projectPath));
 }
 
+async function pruneMigrationBackups(projectPath, keep) {
+  try {
+    const root = harnessPath(projectPath);
+    const entries = (await fs.readdir(root))
+      .filter((name) => /^state\.v\d+\.backup\.\d+\.json$/.test(name))
+      .sort()
+      .reverse();
+    for (const stale of entries.slice(keep)) {
+      await fs.rm(path.join(root, stale), { force: true }).catch(() => {});
+    }
+  } catch {
+    // best-effort cleanup
+  }
+}
+
 async function migrateHarnessLocked(projectPath) {
   const stateFile = harnessPath(projectPath, "state.json");
   const existing = await readJson(stateFile, DEFAULT_STATE);
@@ -642,6 +661,7 @@ async function migrateHarnessLocked(projectPath) {
     if (stat.isFile()) {
       backupPath = harnessPath(projectPath, `state.v${fromVersion}.backup.${Date.now()}.json`);
       await fs.copyFile(stateFile, backupPath);
+      await pruneMigrationBackups(projectPath, 5);
     }
   } catch (error) {
     if (error && error.code !== "ENOENT") throw error;

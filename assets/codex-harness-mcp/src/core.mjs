@@ -959,6 +959,105 @@ function normalizeVerificationStatus(value) {
   return ["pass", "fail", "unknown"].includes(status) ? status : "unknown";
 }
 
+const ELICITATION_ACTIONS = ["accept", "decline", "cancel"];
+const SAMPLING_STOP_REASONS = ["endTurn", "maxTokens", "stopSequence", "tool_use", "content_filter"];
+
+function normalizeElicitationAction(value) {
+  const action = sanitizeText(value || "", { maxLength: 30 });
+  if (!ELICITATION_ACTIONS.includes(action)) {
+    throw new Error(`client_action must be one of accept|decline|cancel (got ${JSON.stringify(value)})`);
+  }
+  return action;
+}
+
+function normalizeStopReason(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const reason = sanitizeText(value, { maxLength: 30 });
+  if (!SAMPLING_STOP_REASONS.includes(reason)) {
+    throw new Error(`stop_reason must be one of ${SAMPLING_STOP_REASONS.join("|")} or null (got ${JSON.stringify(value)})`);
+  }
+  return reason;
+}
+
+function jsonStringifyIfObject(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export async function recordElicitationInteraction(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const message = sanitizeText(input.message, { maxLength: 2000 });
+  if (!message) throw new Error("message is required.");
+  const clientAction = normalizeElicitationAction(input.client_action);
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "elicitation_interaction",
+      message,
+      requestedSchema: sanitizeNullableText(jsonStringifyIfObject(input.requested_schema), { maxLength: 4000 }),
+      clientAction,
+      content: sanitizeNullableText(jsonStringifyIfObject(input.content), { maxLength: 4000 }),
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "elicitation_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      action: entry.clientAction
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
+export async function recordSamplingInteraction(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const promptSummary = sanitizeText(input.prompt_summary, { maxLength: 500 });
+  if (!promptSummary) throw new Error("prompt_summary is required.");
+  const stopReason = normalizeStopReason(input.stop_reason);
+  const maxTokens = Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? input.max_tokens : null;
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "sampling_interaction",
+      promptSummary,
+      systemPrompt: sanitizeNullableText(input.system_prompt, { maxLength: 2000 }),
+      modelHint: sanitizeNullableText(input.model_hint, { maxLength: 200 }),
+      maxTokens,
+      responseSummary: sanitizeNullableText(input.response_summary, { maxLength: 2000 }),
+      stopReason,
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "sampling_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      modelHint: entry.modelHint
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
 export async function recordKnowledge(input) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   return mutateState(projectPath, async (state) => {

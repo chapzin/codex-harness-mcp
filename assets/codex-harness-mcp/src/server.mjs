@@ -35,6 +35,8 @@ import {
   recordResearchSource,
   recordVerification,
   recordTrace,
+  recordElicitationInteraction,
+  recordSamplingInteraction,
   renderGovernanceReport,
   writeGovernancePolicy,
   updateState
@@ -235,6 +237,63 @@ const tools = [
     outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await recordVerification(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_elicitation_interaction",
+    description: "Record an MCP elicitation/create interaction as evidence (message, requested schema, client action, optional content). Storage-only; does not perform the protocol-level request.",
+    inputSchema: {
+      type: "object",
+      required: ["message", "client_action"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        message: { type: "string", minLength: 1, description: "Prompt shown to the user." },
+        requested_schema: { description: "Optional JSON schema that defined the expected response shape." },
+        client_action: { type: "string", enum: ["accept", "decline", "cancel"] },
+        content: { description: "User's response content if client_action is 'accept'." },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordElicitationInteraction(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_sampling_interaction",
+    description: "Record an MCP sampling/createMessage interaction as evidence (prompt summary, model hint, response summary, stop reason). Storage-only; does not perform the protocol-level request.",
+    inputSchema: {
+      type: "object",
+      required: ["prompt_summary"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        prompt_summary: { type: "string", minLength: 1 },
+        system_prompt: { type: "string" },
+        model_hint: { type: "string" },
+        max_tokens: { type: "integer", minimum: 1 },
+        response_summary: { type: "string" },
+        stop_reason: {
+          type: "string",
+          enum: ["endTurn", "maxTokens", "stopSequence", "tool_use", "content_filter"]
+        },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordSamplingInteraction(input);
       return {
         projectPath: result.projectPath,
         entry: agentSafeTrace(result.entry)

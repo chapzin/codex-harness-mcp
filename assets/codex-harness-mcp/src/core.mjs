@@ -245,6 +245,46 @@ export function untrustedBlock(value, source = "stored-data") {
   return `<untrusted-data source="${safeSource}">\n${safeText}\n${UNTRUSTED_CLOSE}`;
 }
 
+const INJECTION_PATTERNS = [
+  {
+    id: "role-confusion",
+    regex: /(?:you are now|forget\s+(?:all\s+)?(?:previous|prior)|new persona|<system>|^\s*system:)/im
+  },
+  {
+    id: "ignore-previous",
+    regex: /(?:ignore|disregard)\s+(?:all\s+)?(?:previous|prior|above|earlier)(?:\s+instructions?)?/im
+  },
+  {
+    id: "base64-gigante",
+    regex: /[A-Za-z0-9+/=]{4096,}/
+  }
+];
+
+export function scanForInjectionPatterns(text) {
+  const value = String(text == null ? "" : text);
+  if (!value) return { riskTier: "low", matches: [] };
+  const matches = [];
+  for (const pattern of INJECTION_PATTERNS) {
+    const hit = value.match(pattern.regex);
+    if (hit) {
+      matches.push({
+        pattern: pattern.id,
+        sample: hit[0].slice(0, 80)
+      });
+    }
+  }
+  const riskTier = matches.length === 0 ? "low" : matches.length === 1 ? "medium" : "high";
+  return { riskTier, matches };
+}
+
+function applyInjectionScan(entry, ...sources) {
+  const text = sources.filter(Boolean).join("\n");
+  const scan = scanForInjectionPatterns(text);
+  entry.riskTier = scan.riskTier;
+  entry.riskMatches = scan.matches;
+  return entry;
+}
+
 export function agentSafeContract(contract) {
   if (!contract) return null;
   return {
@@ -895,6 +935,7 @@ export async function recordTrace(input) {
       evidencePaths: sanitizeStringList(input.evidence_paths, { maxLength: 500 }),
       followUp: sanitizeNullableText(input.follow_up, { maxLength: 1000 })
     };
+    applyInjectionScan(entry, entry.summary, entry.raw);
 
     await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
     state.counters.traces += 1;
@@ -937,6 +978,7 @@ export async function recordVerification(input) {
         finishedAt: sanitizeNullableText(input.finished_at, { maxLength: 80 })
       }
     };
+    applyInjectionScan(entry, entry.summary, entry.raw, commandOrCheck);
 
     await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
     state.counters.traces += 1;

@@ -12,6 +12,7 @@ import {
   queryKnowledgeFtsBackend,
   isFtsAvailable
 } from "./fts-index.mjs";
+import { emitOtelSpanRecord, isOtelEnabled } from "./otel-export.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
@@ -1629,6 +1630,24 @@ export async function queryKnowledgeFts(input = {}) {
     query: untrustedBlock(query, "fts.query"),
     results
   };
+}
+
+export async function emitOtelSpan(input = {}) {
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
+  if (!isOtelEnabled()) {
+    return { projectPath, emitted: false, span: null };
+  }
+  const result = await emitOtelSpanRecord(harnessRoot, {
+    name: input.name,
+    traceId: input.trace_id ?? input.traceId,
+    spanId: input.span_id ?? input.spanId,
+    parentSpanId: input.parent_span_id ?? input.parentSpanId,
+    kind: input.kind,
+    startTimeUnixNano: input.start_time_unix_nano ?? input.startTimeUnixNano,
+    endTimeUnixNano: input.end_time_unix_nano ?? input.endTimeUnixNano,
+    attributes: input.attributes
+  });
+  return { projectPath, ...result };
 }
 
 export async function rebuildFtsIndex(input = {}) {

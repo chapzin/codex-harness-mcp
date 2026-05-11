@@ -36,6 +36,7 @@ import {
   recordResearchSource,
   recordVerification,
   recordTrace,
+  emitOtelSpan,
   queryEvents,
   queryKnowledgeFts,
   rebuildFtsIndex,
@@ -462,6 +463,28 @@ const tools = [
         entry: agentSafeTrace(result.entry)
       };
     }
+  },
+  {
+    name: "harness_emit_otel_span",
+    description: "Emit an OpenTelemetry GenAI-shaped span to .codex-harness/otel/spans-{date}.jsonl when OTEL_EXPORTER_OTLP_ENDPOINT is set; no-op otherwise. Attributes should follow OTel GenAI semantic conventions (gen_ai.* prefix, mcp.tool.name).",
+    inputSchema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        ...projectPathProperty,
+        name: { type: "string", minLength: 1, description: "Span name, e.g. gen_ai.chat or mcp.tool.invoke." },
+        trace_id: { type: "string", description: "32-char lowercase hex trace id; auto-generated if absent." },
+        span_id: { type: "string", description: "16-char lowercase hex span id; auto-generated if absent." },
+        parent_span_id: { type: "string", description: "16-char lowercase hex parent span id." },
+        kind: { type: "string", description: "Span kind (e.g. SPAN_KIND_INTERNAL, SPAN_KIND_CLIENT)." },
+        start_time_unix_nano: { type: "string", description: "Unix nanoseconds as string; defaults to current time." },
+        end_time_unix_nano: { type: "string", description: "Unix nanoseconds as string; defaults to start." },
+        attributes: { type: "object", description: "Key-value attributes; values must be string/number/boolean/array-of-strings." }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: emitOtelSpan
   },
   {
     name: "harness_query_knowledge_fts",

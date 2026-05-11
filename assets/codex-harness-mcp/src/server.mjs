@@ -14,6 +14,7 @@ import {
   createContract,
   ensureHarness,
   evalGate,
+  exportAgentCard,
   exportObservabilityReport,
   exportNaturalLanguageHarness,
   listHarness,
@@ -497,6 +498,29 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: listPromotionDecisions
+  },
+  {
+    name: "harness_export_agent_card",
+    description: "Export an A2A-compatible Agent Card (2025 spec) describing this harness server. Skills are derived from registered MCP tools; capabilities reflect stdio MCP transport (no streaming/pushNotifications). Use base_url to populate supportedInterfaces.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        base_url: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string" },
+        version: { type: "string" },
+        protocol_binding: { type: "string" },
+        protocol_version: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) =>
+      exportAgentCard({
+        ...input,
+        tools: tools.map((t) => ({ name: t.name, description: t.description }))
+      })
   },
   {
     name: "harness_export_nl_harness",

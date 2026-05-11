@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
@@ -1652,6 +1652,105 @@ export async function exportObservabilityReport(input = {}) {
       promotionDecisions,
       governanceAudit
     })
+  };
+}
+
+let cachedPackageMetadata = null;
+
+function readPackageMetadata() {
+  if (cachedPackageMetadata) return cachedPackageMetadata;
+  try {
+    const pkgUrl = new URL("../package.json", import.meta.url);
+    const raw = readFileSync(pkgUrl, "utf8");
+    const parsed = JSON.parse(raw);
+    cachedPackageMetadata = {
+      name: typeof parsed.name === "string" ? parsed.name : "codex-harness-mcp",
+      version: typeof parsed.version === "string" ? parsed.version : "0.0.0",
+      description: typeof parsed.description === "string" ? parsed.description : ""
+    };
+  } catch {
+    cachedPackageMetadata = {
+      name: "codex-harness-mcp",
+      version: "0.0.0",
+      description: ""
+    };
+  }
+  return cachedPackageMetadata;
+}
+
+function humanizeToolName(name) {
+  const stripped = String(name || "").replace(/^harness_/, "");
+  if (!stripped) return name || "skill";
+  return stripped
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+export function agentCardSkillFromTool(tool) {
+  if (!tool || typeof tool !== "object") return null;
+  const id = sanitizeText(tool.name, { maxLength: 120 });
+  if (!id) return null;
+  const description = sanitizeText(tool.description || "", { maxLength: 600 });
+  return {
+    id,
+    name: humanizeToolName(id),
+    description,
+    tags: ["mcp", "harness"],
+    inputModes: ["application/json"],
+    outputModes: ["application/json"]
+  };
+}
+
+export async function exportAgentCard(input = {}) {
+  const {
+    tools,
+    base_url,
+    name,
+    description,
+    version,
+    protocol_binding,
+    protocol_version,
+    package_metadata
+  } = input || {};
+
+  const pkg = package_metadata && typeof package_metadata === "object"
+    ? package_metadata
+    : readPackageMetadata();
+
+  const toolList = Array.isArray(tools) ? tools : [];
+  const skills = toolList
+    .map((tool) => agentCardSkillFromTool(tool))
+    .filter((skill) => skill !== null);
+
+  const supportedInterfaces = [];
+  if (typeof base_url === "string" && base_url.length > 0) {
+    supportedInterfaces.push({
+      url: base_url,
+      protocolBinding: typeof protocol_binding === "string" && protocol_binding.length > 0
+        ? protocol_binding
+        : "JSONRPC",
+      protocolVersion: typeof protocol_version === "string" && protocol_version.length > 0
+        ? protocol_version
+        : "2.0"
+    });
+  }
+
+  return {
+    name: typeof name === "string" && name.length > 0 ? name : pkg.name,
+    description:
+      typeof description === "string" && description.length > 0 ? description : pkg.description,
+    version: typeof version === "string" && version.length > 0 ? version : pkg.version,
+    capabilities: {
+      streaming: false,
+      pushNotifications: false,
+      stateTransitionHistory: false,
+      extendedAgentCard: false
+    },
+    defaultInputModes: ["application/json"],
+    defaultOutputModes: ["application/json"],
+    supportedInterfaces,
+    skills
   };
 }
 

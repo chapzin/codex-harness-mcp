@@ -805,13 +805,19 @@ async function handleMessage(message) {
   }
 
   switch (message.method) {
-    case "initialize":
+    case "initialize": {
+      const supportedProtocolVersions = ["2024-11-05", "2025-03-26", "2025-06-18"];
+      const requested = message.params?.protocolVersion;
+      const negotiated = supportedProtocolVersions.includes(requested)
+        ? requested
+        : supportedProtocolVersions[supportedProtocolVersions.length - 1];
       sendResult(message.id, {
-        protocolVersion: message.params?.protocolVersion || "2025-06-18",
+        protocolVersion: negotiated,
         capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: SERVER_INFO
       });
       return;
+    }
 
     case "ping":
       sendResult(message.id, {});

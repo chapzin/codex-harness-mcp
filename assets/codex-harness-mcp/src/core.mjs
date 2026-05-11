@@ -142,6 +142,9 @@ export function sanitizeText(value, options = {}) {
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    // Strip zero-width, bidi override/embedding, BOM, and replacement chars
+    // (these can hide content or visually rearrange text like RTL override).
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF\uFFFD]/g, "")
     .replace(/<\/?untrusted-data\b/gi, "[untrusted-data-marker-redacted]");
 
   if (text.length > maxLength) {
@@ -678,7 +681,7 @@ export async function updateState(input) {
 
     if (input.decision) {
       const decision = {
-        id: `decision-${today()}-${crypto.randomBytes(3).toString("hex")}`,
+        id: `decision-${today()}-${crypto.randomBytes(6).toString("hex")}`,
         ts: nowIso(),
         text: sanitizeText(input.decision)
       };
@@ -709,7 +712,7 @@ export async function updateState(input) {
 
 export async function createContract(input) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
-  const id = `${today()}-${slugify(input.title)}-${crypto.randomBytes(3).toString("hex")}`;
+  const id = `${today()}-${slugify(input.title)}-${crypto.randomBytes(6).toString("hex")}`;
   const requestedParent = input.parent_contract_id || input.parentContractId || null;
   const parentContractId = requestedParent ? safeFileId(requestedParent) : null;
   if (requestedParent && !parentContractId) {
@@ -1445,7 +1448,7 @@ function buildKnowledgeItem(input, state) {
 
   const kind = normalizeKnowledgeKind(input.kind);
   return {
-    id: `knowledge-${today()}-${slugify(title)}-${crypto.randomBytes(3).toString("hex")}`,
+    id: `knowledge-${today()}-${slugify(title)}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     kind,
     contractId: sanitizeNullableText(input.contract_id || state.activeContractId, { maxLength: 120 }),
@@ -1472,7 +1475,7 @@ function buildHarnessProfile(input) {
   }
 
   return {
-    id: `profile-${today()}-${slugify(name)}-${crypto.randomBytes(3).toString("hex")}`,
+    id: `profile-${today()}-${slugify(name)}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     name,
     mode: normalizeHarnessProfileMode(input.mode),
@@ -1496,7 +1499,7 @@ function buildEvalCase(input) {
   }
 
   return {
-    id: `eval-case-${today()}-${slugify(title)}-${crypto.randomBytes(3).toString("hex")}`,
+    id: `eval-case-${today()}-${slugify(title)}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     title,
     taskFamily: sanitizeNullableText(input.task_family, { maxLength: 160 }),
@@ -1567,7 +1570,7 @@ function buildHarnessProposal(input) {
   }
 
   return {
-    id: `proposal-${today()}-${slugify(title)}-${crypto.randomBytes(3).toString("hex")}`,
+    id: `proposal-${today()}-${slugify(title)}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     title,
     hypothesis: sanitizeNullableText(input.hypothesis, { maxLength: 4000 }),
@@ -2307,7 +2310,7 @@ export async function evalGate(input) {
   const explicitVerdict = allowedVerdicts.includes(requestedVerdict) ? requestedVerdict : null;
   const verdict = explicitVerdict || (missingOutputs.length === 0 && uncheckedConditions.length === 0 ? "pass" : "unknown");
   const gate = {
-    id: `gate-${today()}-${crypto.randomBytes(3).toString("hex")}`,
+    id: `gate-${today()}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     contractId: contract.id,
     verdict,

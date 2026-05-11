@@ -1100,6 +1100,80 @@ export async function recordSamplingInteraction(input = {}) {
   });
 }
 
+const A2A_DELEGATION_STATUS = new Set([
+  "requested",
+  "in_progress",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+
+function normalizeA2ADelegationStatus(value) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `status is required and must be one of [requested|in_progress|completed|failed|cancelled]; got ${typeof value}.`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!A2A_DELEGATION_STATUS.has(lower)) {
+    throw new Error(
+      `Invalid status "${value}". Expected one of [requested|in_progress|completed|failed|cancelled].`
+    );
+  }
+  return lower;
+}
+
+export async function recordA2ADelegation(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const sourceAgent = sanitizeText(input.source_agent, { maxLength: 200 });
+  if (!sourceAgent) throw new Error("source_agent (sourceAgent) is required.");
+  const targetAgent = sanitizeText(input.target_agent, { maxLength: 200 });
+  if (!targetAgent) throw new Error("target_agent (targetAgent) is required.");
+  const taskSummary = sanitizeText(input.task_summary, { maxLength: 2000 });
+  if (!taskSummary) throw new Error("task_summary (taskSummary) is required.");
+  const status = normalizeA2ADelegationStatus(input.status);
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "a2a_delegation",
+      sourceAgent,
+      targetAgent,
+      targetAgentCardUrl: sanitizeNullableText(input.target_agent_card_url, { maxLength: 1000 }),
+      taskSummary,
+      correlationId: sanitizeNullableText(input.correlation_id, { maxLength: 200 }),
+      requestPayload: sanitizeNullableText(jsonStringifyIfObject(input.request_payload), { maxLength: 4000 }),
+      responseSummary: sanitizeNullableText(input.response_summary, { maxLength: 2000 }),
+      status,
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    applyInjectionScan(
+      entry,
+      entry.taskSummary,
+      entry.responseSummary,
+      entry.notes,
+      entry.requestPayload
+    );
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "a2a_delegation_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      sourceAgent: entry.sourceAgent,
+      targetAgent: entry.targetAgent,
+      status: entry.status
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
 export async function recordKnowledge(input) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   return mutateState(projectPath, async (state) => {

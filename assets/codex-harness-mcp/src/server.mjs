@@ -36,6 +36,7 @@ import {
   recordResearchSource,
   recordVerification,
   recordTrace,
+  recordA2ADelegation,
   recordElicitationInteraction,
   recordSamplingInteraction,
   renderGovernanceReport,
@@ -295,6 +296,39 @@ const tools = [
     outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await recordSamplingInteraction(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_a2a_delegation",
+    description: "Record an A2A (Agent-to-Agent) delegation as evidence (source agent, target agent, target Agent Card URL, task summary, status). Storage-only; does not execute outgoing A2A calls.",
+    inputSchema: {
+      type: "object",
+      required: ["source_agent", "target_agent", "task_summary", "status"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        source_agent: { type: "string", minLength: 1 },
+        target_agent: { type: "string", minLength: 1 },
+        target_agent_card_url: { type: "string" },
+        task_summary: { type: "string", minLength: 1 },
+        correlation_id: { type: "string" },
+        request_payload: {},
+        response_summary: { type: "string" },
+        status: {
+          type: "string",
+          enum: ["requested", "in_progress", "completed", "failed", "cancelled"]
+        },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordA2ADelegation(input);
       return {
         projectPath: result.projectPath,
         entry: agentSafeTrace(result.entry)

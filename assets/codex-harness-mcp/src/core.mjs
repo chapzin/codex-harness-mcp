@@ -1050,17 +1050,24 @@ export async function readKnowledgeIndex(projectPath) {
 
 const knowledgeIndexLocks = new Map();
 function withKnowledgeIndexLock(projectPath, fn) {
-  const previous = knowledgeIndexLocks.get(projectPath) || Promise.resolve();
-  const next = previous.then(fn, fn);
-  knowledgeIndexLocks.set(projectPath, next.catch(() => {}));
-  return next;
+  return chainPerProjectLock(knowledgeIndexLocks, projectPath, fn);
 }
 
 const stateLocks = new Map();
 export function withStateLock(projectPath, fn) {
-  const previous = stateLocks.get(projectPath) || Promise.resolve();
+  return chainPerProjectLock(stateLocks, projectPath, fn);
+}
+
+function chainPerProjectLock(table, projectPath, fn) {
+  const previous = table.get(projectPath) || Promise.resolve();
   const next = previous.then(fn, fn);
-  stateLocks.set(projectPath, next.catch(() => {}));
+  const tracked = next.catch(() => {});
+  table.set(projectPath, tracked);
+  tracked.finally(() => {
+    if (table.get(projectPath) === tracked) {
+      table.delete(projectPath);
+    }
+  });
   return next;
 }
 

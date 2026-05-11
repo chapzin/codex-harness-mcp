@@ -1100,6 +1100,191 @@ export async function recordSamplingInteraction(input = {}) {
   });
 }
 
+const ORCHESTRATION_PATTERNS = new Set([
+  "supervisor",
+  "swarm",
+  "mesh",
+  "hierarchical",
+  "pipeline"
+]);
+
+const ORCHESTRATION_ISOLATION = new Set([
+  "worktree",
+  "process",
+  "none",
+  "container"
+]);
+
+const SUBAGENT_HANDOFF_STATUS = new Set([
+  "initiated",
+  "accepted",
+  "rejected",
+  "completed",
+  "failed"
+]);
+
+function normalizeOrchestrationPattern(value) {
+  if (typeof value !== "string" || !value) {
+    throw new Error(
+      "pattern is required and must be one of [supervisor|swarm|mesh|hierarchical|pipeline]."
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!ORCHESTRATION_PATTERNS.has(lower)) {
+    throw new Error(
+      `Invalid pattern "${value}". Expected one of [supervisor|swarm|mesh|hierarchical|pipeline].`
+    );
+  }
+  return lower;
+}
+
+function normalizeOrchestrationIsolation(value) {
+  if (value === undefined || value === null || value === "") return "none";
+  if (typeof value !== "string") {
+    throw new Error(
+      `Invalid isolation type ${typeof value}. Expected one of [worktree|process|none|container].`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!ORCHESTRATION_ISOLATION.has(lower)) {
+    throw new Error(
+      `Invalid isolation "${value}". Expected one of [worktree|process|none|container].`
+    );
+  }
+  return lower;
+}
+
+function normalizeSubagentHandoffStatus(value) {
+  if (typeof value !== "string") {
+    throw new Error(
+      `status is required and must be one of [initiated|accepted|rejected|completed|failed]; got ${typeof value}.`
+    );
+  }
+  const lower = value.trim().toLowerCase();
+  if (!SUBAGENT_HANDOFF_STATUS.has(lower)) {
+    throw new Error(
+      `Invalid status "${value}". Expected one of [initiated|accepted|rejected|completed|failed].`
+    );
+  }
+  return lower;
+}
+
+function sanitizeSubagentList(subagents) {
+  if (!Array.isArray(subagents) || subagents.length === 0) {
+    throw new Error("subagents must be a non-empty array of {id, role?, model?}.");
+  }
+  return subagents.map((sub, index) => {
+    if (!sub || typeof sub !== "object") {
+      throw new Error(`subagents[${index}] must be an object with an id.`);
+    }
+    const id = sanitizeText(sub.id, { maxLength: 200 });
+    if (!id) throw new Error(`subagents[${index}].id is required.`);
+    return {
+      id,
+      role: sanitizeNullableText(sub.role, { maxLength: 500 }),
+      model: sanitizeNullableText(sub.model, { maxLength: 200 })
+    };
+  });
+}
+
+function sanitizeOrchestrationEdges(edges) {
+  if (edges === undefined || edges === null) return [];
+  if (!Array.isArray(edges)) {
+    throw new Error("edges must be an array of {from, to} objects.");
+  }
+  return edges.map((edge, index) => {
+    if (!edge || typeof edge !== "object") {
+      throw new Error(`edges[${index}] must be an object with from and to.`);
+    }
+    const from = sanitizeText(edge.from, { maxLength: 200 });
+    const to = sanitizeText(edge.to, { maxLength: 200 });
+    if (!from || !to) {
+      throw new Error(`edges[${index}] requires non-empty from and to.`);
+    }
+    return { from, to };
+  });
+}
+
+export async function recordOrchestrationPlan(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const pattern = normalizeOrchestrationPattern(input.pattern);
+  const subagents = sanitizeSubagentList(input.subagents);
+  const isolation = normalizeOrchestrationIsolation(input.isolation);
+  const edges = sanitizeOrchestrationEdges(input.edges);
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "orchestration_plan",
+      title: sanitizeNullableText(input.title, { maxLength: 500 }),
+      pattern,
+      subagents,
+      edges,
+      isolation,
+      notes: sanitizeNullableText(input.notes, { maxLength: 2000 })
+    };
+
+    applyInjectionScan(entry, entry.title, entry.notes);
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "orchestration_plan_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      pattern: entry.pattern,
+      isolation: entry.isolation,
+      subagentCount: entry.subagents.length
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
+export async function recordSubagentHandoff(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const fromAgent = sanitizeText(input.from_agent, { maxLength: 200 });
+  if (!fromAgent) throw new Error("from_agent (fromAgent) is required.");
+  const toAgent = sanitizeText(input.to_agent, { maxLength: 200 });
+  if (!toAgent) throw new Error("to_agent (toAgent) is required.");
+  const status = normalizeSubagentHandoffStatus(input.status);
+
+  return mutateState(projectPath, async (state) => {
+    const entry = {
+      id: `trace-${today()}-${crypto.randomBytes(4).toString("hex")}`,
+      ts: nowIso(),
+      contractId: input.contract_id || state.activeContractId || null,
+      kind: "subagent_handoff",
+      fromAgent,
+      toAgent,
+      reason: sanitizeNullableText(input.reason, { maxLength: 2000 }),
+      handoffPayload: sanitizeNullableText(jsonStringifyIfObject(input.handoff_payload), { maxLength: 4000 }),
+      status,
+      correlationId: sanitizeNullableText(input.correlation_id, { maxLength: 200 }),
+      notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
+    };
+
+    applyInjectionScan(entry, entry.reason, entry.handoffPayload, entry.notes);
+
+    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    state.counters.traces += 1;
+    state.events.push({
+      ts: entry.ts,
+      type: "subagent_handoff_recorded",
+      traceId: entry.id,
+      contractId: entry.contractId,
+      fromAgent: entry.fromAgent,
+      toAgent: entry.toAgent,
+      status: entry.status
+    });
+    state.events = state.events.slice(-80);
+    return { projectPath, entry };
+  });
+}
+
 const A2A_DELEGATION_STATUS = new Set([
   "requested",
   "in_progress",

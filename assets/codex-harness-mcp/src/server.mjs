@@ -38,7 +38,9 @@ import {
   recordTrace,
   recordA2ADelegation,
   recordElicitationInteraction,
+  recordOrchestrationPlan,
   recordSamplingInteraction,
+  recordSubagentHandoff,
   renderGovernanceReport,
   writeGovernancePolicy,
   updateState
@@ -296,6 +298,96 @@ const tools = [
     outputSchema: objectOutputSchema,
     handler: async (input) => {
       const result = await recordSamplingInteraction(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_orchestration_plan",
+    description: "Record a multi-agent orchestration plan as evidence (pattern, subagents, isolation strategy, DAG edges). Storage-only; does not execute orchestration. Pattern enum: supervisor|swarm|mesh|hierarchical|pipeline. Isolation enum: worktree|process|none|container.",
+    inputSchema: {
+      type: "object",
+      required: ["pattern", "subagents"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        title: { type: "string" },
+        pattern: {
+          type: "string",
+          enum: ["supervisor", "swarm", "mesh", "hierarchical", "pipeline"]
+        },
+        subagents: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            required: ["id"],
+            properties: {
+              id: { type: "string", minLength: 1 },
+              role: { type: "string" },
+              model: { type: "string" }
+            },
+            additionalProperties: false
+          }
+        },
+        edges: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["from", "to"],
+            properties: {
+              from: { type: "string", minLength: 1 },
+              to: { type: "string", minLength: 1 }
+            },
+            additionalProperties: false
+          },
+          default: []
+        },
+        isolation: {
+          type: "string",
+          enum: ["worktree", "process", "none", "container"],
+          default: "none"
+        },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordOrchestrationPlan(input);
+      return {
+        projectPath: result.projectPath,
+        entry: agentSafeTrace(result.entry)
+      };
+    }
+  },
+  {
+    name: "harness_record_subagent_handoff",
+    description: "Record a control transfer between subagents as evidence (from_agent, to_agent, reason, handoff_payload, status). Storage-only; does not transfer control. Status enum: initiated|accepted|rejected|completed|failed.",
+    inputSchema: {
+      type: "object",
+      required: ["from_agent", "to_agent", "status"],
+      properties: {
+        ...projectPathProperty,
+        contract_id: { type: "string" },
+        from_agent: { type: "string", minLength: 1 },
+        to_agent: { type: "string", minLength: 1 },
+        reason: { type: "string" },
+        handoff_payload: {},
+        status: {
+          type: "string",
+          enum: ["initiated", "accepted", "rejected", "completed", "failed"]
+        },
+        correlation_id: { type: "string" },
+        notes: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: async (input) => {
+      const result = await recordSubagentHandoff(input);
       return {
         projectPath: result.projectPath,
         entry: agentSafeTrace(result.entry)

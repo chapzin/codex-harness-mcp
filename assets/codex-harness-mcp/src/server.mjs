@@ -167,7 +167,7 @@ const tools = [
   },
   {
     name: "harness_update_state",
-    description: "Update durable harness state with focus, status, active contract, notes, or decisions.",
+    description: "Update durable harness state with focus, status, active contract, notes, decisions, open questions, or question resolutions. Open questions act as anchored fields across compactions.",
     inputSchema: {
       type: "object",
       properties: {
@@ -179,7 +179,9 @@ const tools = [
         },
         active_contract_id: { type: "string" },
         note: { type: "string" },
-        decision: { type: "string" }
+        decision: { type: "string" },
+        open_question: { type: "string", description: "Question to anchor across compactions." },
+        resolve_question_id: { type: "string", description: "ID of an open question to remove." }
       },
       additionalProperties: false
     },
@@ -947,18 +949,37 @@ const tools = [
   },
   {
     name: "harness_compact_context",
-    description: "Generate a compact handoff context block from state, active contract, decisions, and recent traces.",
+    description: "Generate a compact handoff context block from state, active contract, decisions, open questions, and recent traces. Returns driftScore (Jaccard similarity between contract.goal tokens and recent trace summary tokens; 0=high drift, 1=aligned) and a budget suggestion (ok|compact_now|block) when budget_used_pct is supplied (thresholds: 70% suggests compact_now, 85% suggests block).",
     inputSchema: {
       type: "object",
       properties: {
         ...projectPathProperty,
         contract_id: { type: "string" },
-        max_traces: { type: "integer", minimum: 1, default: 6 }
+        max_traces: { type: "integer", minimum: 1, default: 6 },
+        budget_used_pct: { type: "number", minimum: 0, maximum: 100 }
       },
       additionalProperties: false
     },
-    outputSchema: textOutputSchema,
-    handler: async (input) => (await compactContext(input)).text
+    outputSchema: {
+      type: "object",
+      required: ["text", "driftScore", "suggestion"],
+      properties: {
+        text: { type: "string" },
+        driftScore: { type: "number", minimum: 0, maximum: 1 },
+        suggestion: { type: "string", enum: ["ok", "compact_now", "block"] },
+        budgetUsedPct: { type: ["number", "null"] }
+      },
+      additionalProperties: true
+    },
+    handler: async (input) => {
+      const result = await compactContext(input);
+      return {
+        text: result.text,
+        driftScore: result.driftScore,
+        suggestion: result.suggestion,
+        budgetUsedPct: result.budgetUsedPct
+      };
+    }
   },
   {
     name: "harness_list",

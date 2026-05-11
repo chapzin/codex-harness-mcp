@@ -6,6 +6,12 @@ import {
   queryEventLog,
   isEventLogAvailable
 } from "./event-log.mjs";
+import {
+  upsertKnowledgeFts,
+  rebuildKnowledgeFts,
+  queryKnowledgeFtsBackend,
+  isFtsAvailable
+} from "./fts-index.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
@@ -1574,12 +1580,19 @@ export async function recordA2ADelegation(input = {}) {
 }
 
 export async function recordKnowledge(input) {
-  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
   return mutateState(projectPath, async (state) => {
     const item = buildKnowledgeItem(input, state);
     await writeJson(knowledgeItemPath(projectPath, item.id), item);
     await fs.writeFile(knowledgeMarkdownPath(projectPath, item), renderKnowledgeItem(item), "utf8");
     await upsertKnowledgeIndex(projectPath, item);
+    if (isFtsAvailable()) {
+      try {
+        upsertKnowledgeFts(harnessRoot, item);
+      } catch {
+        // FTS mirror is best-effort; primary knowledge JSON store is authoritative
+      }
+    }
 
     state.counters.knowledgeItems += 1;
     state.events.push({
@@ -1592,6 +1605,51 @@ export async function recordKnowledge(input) {
     state.events = state.events.slice(-80);
     return { projectPath, item: agentSafeKnowledgeItem(item) };
   });
+}
+
+export async function queryKnowledgeFts(input = {}) {
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
+  if (!isFtsAvailable()) {
+    throw new Error("queryKnowledgeFts requires node:sqlite (Node.js >= 22.5).");
+  }
+  const query = sanitizeText(input.query || "", { maxLength: 500 });
+  const limit = Math.min(Math.max(Number.isInteger(input.limit) ? input.limit : 5, 1), 50);
+  const matches = queryKnowledgeFtsBackend(harnessRoot, query, limit);
+  const results = [];
+  for (const match of matches) {
+    const item = await readKnowledgeItem(projectPath, match.itemId);
+    if (!item) continue;
+    results.push({
+      score: match.score,
+      item: agentSafeKnowledgeItem(item)
+    });
+  }
+  return {
+    projectPath,
+    query: untrustedBlock(query, "fts.query"),
+    results
+  };
+}
+
+export async function rebuildFtsIndex(input = {}) {
+  const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
+  if (!isFtsAvailable()) {
+    throw new Error("rebuildFtsIndex requires node:sqlite (Node.js >= 22.5).");
+  }
+  const root = harnessPath(projectPath, "knowledge", "items");
+  let names = [];
+  try {
+    names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
+  } catch {
+    names = [];
+  }
+  const items = [];
+  for (const name of names) {
+    const item = await readJson(path.join(root, name), null);
+    if (item) items.push(item);
+  }
+  const itemCount = rebuildKnowledgeFts(harnessRoot, items);
+  return { projectPath, itemCount };
 }
 
 export async function recordResearchSource(input) {

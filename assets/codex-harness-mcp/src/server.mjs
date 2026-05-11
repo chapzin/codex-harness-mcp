@@ -37,6 +37,8 @@ import {
   recordVerification,
   recordTrace,
   queryEvents,
+  queryKnowledgeFts,
+  rebuildFtsIndex,
   recordA2ADelegation,
   recordElicitationInteraction,
   recordEvent,
@@ -460,6 +462,35 @@ const tools = [
         entry: agentSafeTrace(result.entry)
       };
     }
+  },
+  {
+    name: "harness_query_knowledge_fts",
+    description: "Query the knowledge base using SQLite FTS5 full-text search (alternative to BM25+RRF backend). Faster on large corpora. Results ranked by FTS5 bm25() ascending (more negative = better). Requires Node.js >= 22.5.",
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: {
+        ...projectPathProperty,
+        query: { type: "string", minLength: 1 },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 5 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: queryKnowledgeFts
+  },
+  {
+    name: "harness_rebuild_fts_index",
+    description: "Rebuild the SQLite FTS5 knowledge index from .codex-harness/knowledge/items/*.json. Use after recovery, schema change, or bulk import. Requires Node.js >= 22.5.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: rebuildFtsIndex
   },
   {
     name: "harness_record_event",

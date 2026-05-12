@@ -2162,7 +2162,13 @@ export async function recordHarnessProfile(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   const profile = buildHarnessProfile(input);
 
-  await writeJson(harnessProfilePath(projectPath, profile.id), profile);
+  await writeEntitySqliteFirst(
+    projectPath,
+    "harness_profiles",
+    profile,
+    () => writeJson(harnessProfilePath(projectPath, profile.id), profile),
+    "harness profile"
+  );
   await fs.writeFile(harnessProfileMarkdownPath(projectPath, profile.id), renderHarnessProfile(profile), "utf8");
 
   return mutateState(projectPath, (state) => {
@@ -2287,7 +2293,13 @@ export async function recordHarnessProposal(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   const proposal = buildHarnessProposal(input);
 
-  await writeJson(harnessProposalPath(projectPath, proposal.id), proposal);
+  await writeEntitySqliteFirst(
+    projectPath,
+    "harness_proposals",
+    proposal,
+    () => writeJson(harnessProposalPath(projectPath, proposal.id), proposal),
+    "harness proposal"
+  );
   await fs.writeFile(harnessProposalMarkdownPath(projectPath, proposal.id), renderHarnessProposal(proposal), "utf8");
 
   return mutateState(projectPath, (state) => {
@@ -2326,7 +2338,13 @@ export async function recordPromotionDecision(input = {}) {
     throw new Error("proposal_id does not match a stored harness proposal.");
   }
 
-  await writeJson(promotionDecisionPath(projectPath, decision.id), decision);
+  await writeEntitySqliteFirst(
+    projectPath,
+    "promotion_decisions",
+    decision,
+    () => writeJson(promotionDecisionPath(projectPath, decision.id), decision),
+    "promotion decision"
+  );
   await fs.writeFile(promotionDecisionMarkdownPath(projectPath, decision.id), renderPromotionDecision(decision), "utf8");
 
   return mutateState(projectPath, (state) => {
@@ -2539,21 +2557,21 @@ export async function readEvalRun(projectPath, runId) {
 }
 
 export async function readHarnessProfile(projectPath, profileId) {
-  const safeId = safeFileId(profileId);
-  if (!safeId) return null;
-  return readJson(harnessProfilePath(projectPath, safeId), null);
+  return readEntityByIdSqliteFirst(projectPath, "harness_profiles", profileId, (safeId) =>
+    readJson(harnessProfilePath(projectPath, safeId), null)
+  );
 }
 
 export async function readHarnessProposal(projectPath, proposalId) {
-  const safeId = safeFileId(proposalId);
-  if (!safeId) return null;
-  return readJson(harnessProposalPath(projectPath, safeId), null);
+  return readEntityByIdSqliteFirst(projectPath, "harness_proposals", proposalId, (safeId) =>
+    readJson(harnessProposalPath(projectPath, safeId), null)
+  );
 }
 
 export async function readPromotionDecision(projectPath, decisionId) {
-  const safeId = safeFileId(decisionId);
-  if (!safeId) return null;
-  return readJson(promotionDecisionPath(projectPath, safeId), null);
+  return readEntityByIdSqliteFirst(projectPath, "promotion_decisions", decisionId, (safeId) =>
+    readJson(promotionDecisionPath(projectPath, safeId), null)
+  );
 }
 
 export async function readEvalCases(projectPath) {
@@ -2565,42 +2583,15 @@ export async function readEvalRuns(projectPath) {
 }
 
 export async function readHarnessProfiles(projectPath) {
-  const root = harnessPath(resolveProjectPath(projectPath), "harness-profiles");
-  if (!(await fileExists(root))) {
-    return [];
-  }
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const profiles = [];
-  for (const name of names) {
-    profiles.push(await readJson(path.join(root, name), null));
-  }
-  return profiles.filter(Boolean);
+  return listEntitySqliteFirst(projectPath, "harness_profiles", "harness-profiles");
 }
 
 export async function readHarnessProposals(projectPath) {
-  const root = harnessPath(resolveProjectPath(projectPath), "harness-proposals");
-  if (!(await fileExists(root))) {
-    return [];
-  }
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const proposals = [];
-  for (const name of names) {
-    proposals.push(await readJson(path.join(root, name), null));
-  }
-  return proposals.filter(Boolean);
+  return listEntitySqliteFirst(projectPath, "harness_proposals", "harness-proposals");
 }
 
 export async function readPromotionDecisions(projectPath) {
-  const root = harnessPath(resolveProjectPath(projectPath), "promotion-decisions");
-  if (!(await fileExists(root))) {
-    return [];
-  }
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const decisions = [];
-  for (const name of names) {
-    decisions.push(await readJson(path.join(root, name), null));
-  }
-  return decisions.filter(Boolean);
+  return listEntitySqliteFirst(projectPath, "promotion_decisions", "promotion-decisions");
 }
 
 function buildKnowledgeItem(input, state) {

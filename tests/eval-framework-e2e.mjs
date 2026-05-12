@@ -174,6 +174,32 @@ try {
   const runsLimited = await listEvalRuns({ project_path: projectPath, limit: 1 });
   check("list-runs.limit-respected", runsLimited.runs.length === 1);
 
+  const allRunsForOrdering = await listEvalRuns({ project_path: projectPath });
+  const runsOrderedDesc =
+    allRunsForOrdering.runs.length === 2 &&
+    String(allRunsForOrdering.runs[0].ts) >= String(allRunsForOrdering.runs[1].ts);
+  check("list-runs.sorted-ts-desc", runsOrderedDesc);
+
+  const runsLimitZero = await listEvalRuns({ project_path: projectPath, limit: 0 });
+  check(
+    "list-runs.limit-zero-falls-back-to-default",
+    runsLimitZero.runs.length === 2,
+    `got ${runsLimitZero.runs.length}`
+  );
+
+  const runsLimitHuge = await listEvalRuns({ project_path: projectPath, limit: 9999 });
+  check(
+    "list-runs.limit-clamped-to-max-100",
+    runsLimitHuge.runs.length === 2,
+    `got ${runsLimitHuge.runs.length}`
+  );
+
+  const runsSerialized = JSON.stringify(allRunsForOrdering);
+  check(
+    "list-runs.untrusted-data-wraps-user-text",
+    runsSerialized.includes("<untrusted-data") && runsSerialized.includes("</untrusted-data>")
+  );
+
   const state = await loadState(projectPath);
   check(
     "state.counters-match",

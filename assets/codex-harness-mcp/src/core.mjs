@@ -585,6 +585,26 @@ export async function appendJsonl(filePath, value) {
   await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
+async function persistTrace(projectPath, entry) {
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    try {
+      mirrorRowToDb(harnessRoot, "traces", entry);
+    } catch (err) {
+      process.stderr.write(`harness warning: trace SQLite write failed (${err?.message || err}); continuing with JSONL-only.\n`);
+    }
+  }
+  const traceFile = harnessPath(projectPath, "traces", `${today()}.jsonl`);
+  try {
+    await fs.mkdir(path.dirname(traceFile), { recursive: true });
+    await refuseSymlinkAt(traceFile);
+    await fs.appendFile(traceFile, `${JSON.stringify(entry)}\n`, "utf8");
+  } catch (err) {
+    if (!isHarnessDbAvailable()) throw err;
+    process.stderr.write(`harness warning: trace JSONL export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+  }
+}
+
 export async function ensureHarness(input = {}) {
   const projectPath = resolveProjectPath(input.project_path);
   const fsCheck = await checkLocalFilesystem(projectPath);
@@ -1066,7 +1086,7 @@ export async function recordTrace(input) {
     };
     applyInjectionScan(entry, entry.summary, entry.raw);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1109,7 +1129,7 @@ export async function recordVerification(input) {
     };
     applyInjectionScan(entry, entry.summary, entry.raw, commandOrCheck);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.counters.verifications += 1;
     state.events.push({
@@ -1179,7 +1199,7 @@ export async function recordElicitationInteraction(input = {}) {
       notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
     };
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1215,7 +1235,7 @@ export async function recordSamplingInteraction(input = {}) {
       notes: sanitizeNullableText(input.notes, { maxLength: 1000 })
     };
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1297,7 +1317,7 @@ export async function recordSubagentDispatch(input = {}) {
 
     applyInjectionScan(entry, entry.taskDescription, entry.notes);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1338,7 +1358,7 @@ export async function recordSubagentCompletion(input = {}) {
 
     applyInjectionScan(entry, entry.summary, entry.notes);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1481,7 +1501,7 @@ export async function recordOrchestrationPlan(input = {}) {
 
     applyInjectionScan(entry, entry.title, entry.notes);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1522,7 +1542,7 @@ export async function recordSubagentHandoff(input = {}) {
 
     applyInjectionScan(entry, entry.reason, entry.handoffPayload, entry.notes);
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -1639,7 +1659,7 @@ export async function recordA2ADelegation(input = {}) {
       entry.requestPayload
     );
 
-    await appendJsonl(harnessPath(projectPath, "traces", `${today()}.jsonl`), entry);
+    await persistTrace(projectPath, entry);
     state.counters.traces += 1;
     state.events.push({
       ts: entry.ts,
@@ -3054,8 +3074,26 @@ function makeKnowledgeSnippet(item, queryTokens) {
 
 export async function readRecentTraces(projectPath, limit = 8) {
   await ensureHarness({ project_path: projectPath });
-  const tracesRoot = harnessPath(resolveProjectPath(projectPath), "traces");
-  const names = (await fs.readdir(tracesRoot)).filter((name) => name.endsWith(".jsonl")).sort().slice(-7);
+  const resolved = resolveProjectPath(projectPath);
+  const harnessRoot = harnessPath(resolved);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const rows = listRowsFromDb(harnessRoot, "traces", { orderBy: "ts" });
+      if (rows.length > 0) {
+        return rows.slice(-limit);
+      }
+    } catch {
+      // fall through to JSONL
+    }
+  }
+  const tracesRoot = harnessPath(resolved, "traces");
+  let names = [];
+  try {
+    names = (await fs.readdir(tracesRoot)).filter((name) => name.endsWith(".jsonl")).sort().slice(-7);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
   const entries = [];
   for (const name of names) {
     const raw = await fs.readFile(path.join(tracesRoot, name), "utf8");

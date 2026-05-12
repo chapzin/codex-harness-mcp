@@ -3634,6 +3634,8 @@ export async function nextStep(input = {}) {
   const contract = await loadContract(projectPath, input.contract_id);
   const traces = await readRecentTraces(projectPath, input.max_traces || 6);
   const last = traces[traces.length - 1] || null;
+  const deferredSignals = await computeDeferredSignals(projectPath, state);
+  const advisories = computeNextStepAdvisories(state, deferredSignals);
 
   if (!contract) {
     return {
@@ -3641,7 +3643,8 @@ export async function nextStep(input = {}) {
       state: agentSafeState(state),
       recommendation: "Create a small execution contract before implementation.",
       reason: "No active contract is recorded. The harness needs a bounded goal, completion conditions, and output paths.",
-      suggestedPrompt: "Use harness_create_contract with the smallest useful goal, then work from that contract."
+      suggestedPrompt: "Use harness_create_contract with the smallest useful goal, then work from that contract.",
+      advisories
     };
   }
 
@@ -3662,7 +3665,8 @@ export async function nextStep(input = {}) {
         "Record the attempt and verification result as a new trace."
       ],
       contract: agentSafeContract(contract),
-      recentTraces: traces.map(agentSafeTrace)
+      recentTraces: traces.map(agentSafeTrace),
+      advisories
     };
   }
 
@@ -3677,7 +3681,8 @@ export async function nextStep(input = {}) {
         path: untrustedBlock(item.path, "contract.outputPath")
       })),
       contract: agentSafeContract(contract),
-      recentTraces: traces.map(agentSafeTrace)
+      recentTraces: traces.map(agentSafeTrace),
+      advisories
     };
   }
 
@@ -3689,7 +3694,8 @@ export async function nextStep(input = {}) {
       reason: "Artifacts exist, but the latest trace is not a verification trace.",
       verificationCommands: untrustedList(contract.verificationCommands, "contract.verificationCommands"),
       contract: agentSafeContract(contract),
-      recentTraces: traces.map(agentSafeTrace)
+      recentTraces: traces.map(agentSafeTrace),
+      advisories
     };
   }
 
@@ -3699,8 +3705,32 @@ export async function nextStep(input = {}) {
     recommendation: "Evaluate the completion gate.",
     reason: "The active contract has artifacts and recent progress. The next useful step is to check completion conditions explicitly.",
     contract: agentSafeContract(contract),
-    recentTraces: traces.map(agentSafeTrace)
+    recentTraces: traces.map(agentSafeTrace),
+    advisories
   };
+}
+
+function computeNextStepAdvisories(state, deferredSignals) {
+  const advisories = [];
+  const coverageCount = state?.counters?.coverageWarningsFired || 0;
+  if (coverageCount > 0) {
+    advisories.push({
+      type: "coverage_warnings_observed",
+      count: coverageCount,
+      suggestion:
+        "evalGate has emitted coverage warnings. Consider registering an eval_case whose verification_checks match the affected contract verification_commands."
+    });
+  }
+  for (const [signal, payload] of Object.entries(deferredSignals || {})) {
+    if (payload?.shouldReconsider === true) {
+      advisories.push({
+        type: "deferred_signal_threshold_met",
+        signal,
+        suggestion: `Threshold reached for ${signal}. Re-run verify-before-commit with fresh empirical data before opening a contract.`
+      });
+    }
+  }
+  return advisories;
 }
 
 export async function evalGate(input) {

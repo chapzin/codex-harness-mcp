@@ -1679,7 +1679,19 @@ export async function recordKnowledge(input) {
   const { projectPath, harnessRoot } = await ensureHarness({ project_path: input.project_path });
   return mutateState(projectPath, async (state) => {
     const item = buildKnowledgeItem(input, state);
-    await writeJson(knowledgeItemPath(projectPath, item.id), item);
+    if (isHarnessDbAvailable()) {
+      try {
+        mirrorRowToDb(harnessRoot, "knowledge_items", item);
+      } catch (err) {
+        process.stderr.write(`harness warning: knowledge SQLite write failed (${err?.message || err}); continuing with JSON-only.\n`);
+      }
+    }
+    try {
+      await writeJson(knowledgeItemPath(projectPath, item.id), item);
+    } catch (err) {
+      if (!isHarnessDbAvailable()) throw err;
+      process.stderr.write(`harness warning: knowledge JSON export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+    }
     await fs.writeFile(knowledgeMarkdownPath(projectPath, item), renderKnowledgeItem(item), "utf8");
     await upsertKnowledgeIndex(projectPath, item);
     if (isFtsAvailable()) {
@@ -1889,6 +1901,16 @@ export async function readKnowledgeItem(projectPath, itemId) {
   if (!safeId) {
     return null;
   }
+  if (isHarnessDbAvailable()) {
+    const harnessRoot = harnessPath(projectPath);
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const fromDb = readRowFromDb(harnessRoot, "knowledge_items", safeId);
+      if (fromDb) return fromDb;
+    } catch {
+      // fall through to JSON
+    }
+  }
   return readJson(knowledgeItemPath(projectPath, safeId), null);
 }
 
@@ -1908,12 +1930,28 @@ async function readKnowledgeIndexRaw(projectPath, fallback) {
 }
 
 async function rebuildKnowledgeIndexLocked(projectPath) {
-  const root = harnessPath(projectPath, "knowledge", "items");
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const items = [];
-  for (const name of names) {
-    const item = await readJson(path.join(root, name), null);
-    if (item) items.push(item);
+  let items = [];
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      items = listRowsFromDb(harnessRoot, "knowledge_items");
+    } catch {
+      items = [];
+    }
+  }
+  if (items.length === 0) {
+    const root = harnessPath(projectPath, "knowledge", "items");
+    let names = [];
+    try {
+      names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+    for (const name of names) {
+      const item = await readJson(path.join(root, name), null);
+      if (item) items.push(item);
+    }
   }
   const index = buildKnowledgeIndex(items);
   await writeJson(knowledgeIndexPath(projectPath), index);

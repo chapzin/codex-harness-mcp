@@ -585,6 +585,61 @@ export async function appendJsonl(filePath, value) {
   await fs.appendFile(filePath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
+async function readEntityByIdSqliteFirst(projectPath, table, id, jsonReader) {
+  const safeId = safeFileId(id);
+  if (!safeId) return null;
+  if (isHarnessDbAvailable()) {
+    const harnessRoot = harnessPath(projectPath);
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const fromDb = readRowFromDb(harnessRoot, table, safeId);
+      if (fromDb) return fromDb;
+    } catch {
+      // fall through
+    }
+  }
+  return jsonReader(safeId);
+}
+
+async function listEntitySqliteFirst(projectPath, table, ...dirParts) {
+  const resolved = resolveProjectPath(projectPath);
+  const harnessRoot = harnessPath(resolved);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const rows = listRowsFromDb(harnessRoot, table);
+      if (rows.length > 0) return rows;
+    } catch {
+      // fall through
+    }
+  }
+  const root = harnessPath(resolved, ...dirParts);
+  if (!(await fileExists(root))) return [];
+  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
+  const items = [];
+  for (const name of names) {
+    items.push(await readJson(path.join(root, name), null));
+  }
+  return items.filter(Boolean);
+}
+
+async function writeEntitySqliteFirst(projectPath, table, item, jsonWriter, label) {
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    try {
+      mirrorRowToDb(harnessRoot, table, item);
+    } catch (err) {
+      process.stderr.write(`harness warning: ${label} SQLite write failed (${err?.message || err}); continuing with JSON-only.\n`);
+    }
+  }
+  try {
+    await jsonWriter();
+  } catch (err) {
+    if (!isHarnessDbAvailable()) throw err;
+    process.stderr.write(`harness warning: ${label} JSON export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+  }
+}
+
 async function persistTrace(projectPath, entry) {
   const harnessRoot = harnessPath(projectPath);
   if (isHarnessDbAvailable()) {
@@ -2141,7 +2196,13 @@ export async function recordEvalCase(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   const evalCase = buildEvalCase(input);
 
-  await writeJson(evalCasePath(projectPath, evalCase.id), evalCase);
+  await writeEntitySqliteFirst(
+    projectPath,
+    "eval_cases",
+    evalCase,
+    () => writeJson(evalCasePath(projectPath, evalCase.id), evalCase),
+    "eval case"
+  );
   await fs.writeFile(evalCaseMarkdownPath(projectPath, evalCase.id), renderEvalCase(evalCase), "utf8");
 
   return mutateState(projectPath, (state) => {
@@ -2162,7 +2223,13 @@ export async function recordEvalRun(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   const run = buildEvalRun(input);
 
-  await writeJson(evalRunPath(projectPath, run.id), run);
+  await writeEntitySqliteFirst(
+    projectPath,
+    "eval_runs",
+    run,
+    () => writeJson(evalRunPath(projectPath, run.id), run),
+    "eval run"
+  );
   await fs.writeFile(evalRunMarkdownPath(projectPath, run.id), renderEvalRun(run), "utf8");
 
   return mutateState(projectPath, (state) => {
@@ -2460,15 +2527,15 @@ export async function exportAgentCard(input = {}) {
 }
 
 export async function readEvalCase(projectPath, caseId) {
-  const safeId = safeFileId(caseId);
-  if (!safeId) return null;
-  return readJson(evalCasePath(projectPath, safeId), null);
+  return readEntityByIdSqliteFirst(projectPath, "eval_cases", caseId, (safeId) =>
+    readJson(evalCasePath(projectPath, safeId), null)
+  );
 }
 
 export async function readEvalRun(projectPath, runId) {
-  const safeId = safeFileId(runId);
-  if (!safeId) return null;
-  return readJson(evalRunPath(projectPath, safeId), null);
+  return readEntityByIdSqliteFirst(projectPath, "eval_runs", runId, (safeId) =>
+    readJson(evalRunPath(projectPath, safeId), null)
+  );
 }
 
 export async function readHarnessProfile(projectPath, profileId) {
@@ -2490,29 +2557,11 @@ export async function readPromotionDecision(projectPath, decisionId) {
 }
 
 export async function readEvalCases(projectPath) {
-  const root = harnessPath(resolveProjectPath(projectPath), "evals", "cases");
-  if (!(await fileExists(root))) {
-    return [];
-  }
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const cases = [];
-  for (const name of names) {
-    cases.push(await readJson(path.join(root, name), null));
-  }
-  return cases.filter(Boolean);
+  return listEntitySqliteFirst(projectPath, "eval_cases", "evals", "cases");
 }
 
 export async function readEvalRuns(projectPath) {
-  const root = harnessPath(resolveProjectPath(projectPath), "evals", "runs");
-  if (!(await fileExists(root))) {
-    return [];
-  }
-  const names = (await fs.readdir(root)).filter((name) => name.endsWith(".json")).sort();
-  const runs = [];
-  for (const name of names) {
-    runs.push(await readJson(path.join(root, name), null));
-  }
-  return runs.filter(Boolean);
+  return listEntitySqliteFirst(projectPath, "eval_runs", "evals", "runs");
 }
 
 export async function readHarnessProfiles(projectPath) {

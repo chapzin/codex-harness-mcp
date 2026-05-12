@@ -3758,7 +3758,71 @@ export async function evalGate(input) {
     });
     state.events = state.events.slice(-80);
   });
-  return { projectPath, contract, gate, markdown };
+
+  const autoEvalRuns = verdict === "pass"
+    ? await autoBindEvalRuns(projectPath, contract, gate)
+    : [];
+
+  return { projectPath, contract, gate, markdown, autoEvalRuns };
+}
+
+function normalizeVerificationCommand(value) {
+  return String(value || "").trim().replace(/\s+passes?\s*$/i, "").trim();
+}
+
+function deriveAutoBindVerdict(score) {
+  if (score >= 0.8) return "pass";
+  if (score <= 0.2) return "fail";
+  return "unknown";
+}
+
+async function autoBindEvalRuns(projectPath, contract, gate) {
+  const cases = await readEvalCases(projectPath);
+  if (cases.length === 0) return [];
+  const traces = await readRecentTraces(projectPath, 200);
+  const passingCommands = new Set(
+    traces
+      .filter((t) => t.contractId === contract.id && t.kind === "verification" && t.verification?.status === "pass")
+      .map((t) => normalizeVerificationCommand(t.verification?.commandOrCheck))
+      .filter((cmd) => cmd.length > 0)
+  );
+  if (passingCommands.size === 0) return [];
+
+  const results = [];
+  for (const evalCase of cases) {
+    const checks = (evalCase.verificationChecks || [])
+      .map(normalizeVerificationCommand)
+      .filter((cmd) => cmd.length > 0);
+    if (checks.length === 0) continue;
+    const matchedCount = checks.filter((check) => passingCommands.has(check)).length;
+    if (matchedCount === 0) continue;
+    const score = matchedCount / checks.length;
+    const autoVerdict = deriveAutoBindVerdict(score);
+    try {
+      const run = await recordEvalRun({
+        project_path: projectPath,
+        eval_case_id: evalCase.id,
+        verdict: autoVerdict,
+        score,
+        holdout_split: "production",
+        contamination_check: false,
+        notes: `Auto-bound from gate ${gate.id} (contract ${contract.id}). Matched ${matchedCount}/${checks.length} verification_checks.`
+      });
+      results.push({
+        evalRunId: run.run.id,
+        evalCaseId: evalCase.id,
+        score,
+        verdict: autoVerdict,
+        matchedCount,
+        totalChecks: checks.length
+      });
+    } catch (err) {
+      process.stderr.write(
+        `harness warning: auto-bind eval_run failed for case ${evalCase.id} (${err?.message || err}); continuing.\n`
+      );
+    }
+  }
+  return results;
 }
 
 const COMPACT_BUDGET_BLOCK_PCT = 85;

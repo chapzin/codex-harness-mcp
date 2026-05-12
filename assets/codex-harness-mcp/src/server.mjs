@@ -1116,7 +1116,8 @@ const tools = [
         projectPath: result.projectPath,
         contract: agentSafeContract(result.contract),
         gate: agentSafeGate(result.gate),
-        gateMarkdown: result.markdown
+        gateMarkdown: result.markdown,
+        autoEvalRuns: result.autoEvalRuns || []
       };
     }
   },

@@ -3763,7 +3763,21 @@ export async function evalGate(input) {
     ? await autoBindEvalRuns(projectPath, contract, gate)
     : [];
 
-  return { projectPath, contract, gate, markdown, autoEvalRuns };
+  const coverageWarning = await computeCoverageWarning(projectPath, verdict, autoEvalRuns);
+
+  return { projectPath, contract, gate, markdown, autoEvalRuns, coverageWarning };
+}
+
+async function computeCoverageWarning(projectPath, verdict, autoEvalRuns) {
+  if (verdict !== "pass") return null;
+  if (autoEvalRuns.length > 0) return null;
+  const cases = await readEvalCases(projectPath);
+  if (cases.length === 0) return null;
+  return {
+    type: "missing_regression_coverage",
+    reason: `Gate passou mas nenhum dos ${cases.length} eval_case(s) registado(s) tem verification_checks com evidência neste contract.`,
+    suggestion: "Registre um eval_case cujos verification_checks correspondam aos verification_commands deste contract para destravar regression tracking."
+  };
 }
 
 function normalizeVerificationCommand(value) {

@@ -343,6 +343,156 @@ try {
       `got ${JSON.stringify(gateResult.autoEvalRuns)}`
     );
   }
+
+  // Scenario 8: Coverage warning emitted when gate passes but no eval_case applies
+  {
+    const contractResult = await createContract({
+      project_path: projectPath,
+      title: "scenario-8 contract uncovered",
+      goal: "Verify coverageWarning emitted when cases exist but none match",
+      completion_conditions: ["condition-h"]
+    });
+    const contractId = contractResult.contract.id;
+
+    await recordEvalCase({
+      project_path: projectPath,
+      title: "scenario-8 case for OTHER area",
+      split: "regression",
+      verification_checks: ["node tests/scenario-8-elsewhere.mjs passes"]
+    });
+
+    await recordVerification({
+      project_path: projectPath,
+      contract_id: contractId,
+      command_or_check: "node tests/scenario-8-this-contract.mjs",
+      status: "pass",
+      raw_output: "this passes but no case matches"
+    });
+
+    const gateResult = await evalGate({
+      project_path: projectPath,
+      contract_id: contractId,
+      checked_conditions: ["condition-h"]
+    });
+
+    check(
+      "s8.uncovered.coverageWarning-emitted",
+      gateResult.coverageWarning &&
+        typeof gateResult.coverageWarning === "object" &&
+        typeof gateResult.coverageWarning.type === "string" &&
+        typeof gateResult.coverageWarning.reason === "string" &&
+        typeof gateResult.coverageWarning.suggestion === "string",
+      JSON.stringify(gateResult.coverageWarning)
+    );
+    check(
+      "s8.uncovered.autoEvalRuns-still-empty",
+      Array.isArray(gateResult.autoEvalRuns) && gateResult.autoEvalRuns.length === 0,
+      `got ${gateResult.autoEvalRuns?.length}`
+    );
+  }
+
+  // Scenario 9: No coverageWarning when no eval_cases registered at all (avoid spam in new projects)
+  {
+    const freshProject = await fs.mkdtemp(path.join(os.tmpdir(), "codex-harness-auto-eval-fresh-"));
+    try {
+      const contractResult = await createContract({
+        project_path: freshProject,
+        title: "scenario-9 contract no cases anywhere",
+        goal: "Verify no warning when framework unused",
+        completion_conditions: ["condition-i"]
+      });
+      const contractId = contractResult.contract.id;
+
+      await recordVerification({
+        project_path: freshProject,
+        contract_id: contractId,
+        command_or_check: "node tests/scenario-9.mjs",
+        status: "pass",
+        raw_output: "passes"
+      });
+
+      const gateResult = await evalGate({
+        project_path: freshProject,
+        contract_id: contractId,
+        checked_conditions: ["condition-i"]
+      });
+
+      check(
+        "s9.no-cases-registered.coverageWarning-null",
+        gateResult.coverageWarning === null,
+        JSON.stringify(gateResult.coverageWarning)
+      );
+    } finally {
+      await fs.rm(freshProject, { recursive: true, force: true });
+    }
+  }
+
+  // Scenario 10: No coverageWarning when autoEvalRuns fires (there IS coverage)
+  {
+    const contractResult = await createContract({
+      project_path: projectPath,
+      title: "scenario-10 contract covered",
+      goal: "Verify no warning when auto-bind produced runs",
+      completion_conditions: ["condition-j"]
+    });
+    const contractId = contractResult.contract.id;
+
+    await recordEvalCase({
+      project_path: projectPath,
+      title: "scenario-10 case matches contract",
+      split: "regression",
+      verification_checks: ["node tests/scenario-10.mjs passes"]
+    });
+
+    await recordVerification({
+      project_path: projectPath,
+      contract_id: contractId,
+      command_or_check: "node tests/scenario-10.mjs",
+      status: "pass",
+      raw_output: "covered passes"
+    });
+
+    const gateResult = await evalGate({
+      project_path: projectPath,
+      contract_id: contractId,
+      checked_conditions: ["condition-j"]
+    });
+
+    check(
+      "s10.covered.coverageWarning-null",
+      gateResult.coverageWarning === null,
+      JSON.stringify(gateResult.coverageWarning)
+    );
+    check(
+      "s10.covered.autoEvalRuns-non-empty",
+      Array.isArray(gateResult.autoEvalRuns) && gateResult.autoEvalRuns.length >= 1,
+      `count=${gateResult.autoEvalRuns?.length}`
+    );
+  }
+
+  // Scenario 11: No coverageWarning when gate verdict is not pass
+  {
+    const contractResult = await createContract({
+      project_path: projectPath,
+      title: "scenario-11 contract fail no warning",
+      goal: "Verify warning suppressed on non-pass verdict",
+      completion_conditions: ["condition-k1", "condition-k2"]
+    });
+    const contractId = contractResult.contract.id;
+
+    const gateResult = await evalGate({
+      project_path: projectPath,
+      contract_id: contractId,
+      checked_conditions: ["condition-k1"],
+      verdict: "fail"
+    });
+
+    check(
+      "s11.fail.coverageWarning-null",
+      gateResult.coverageWarning === null,
+      JSON.stringify(gateResult.coverageWarning)
+    );
+  }
 } finally {
   await fs.rm(projectPath, { recursive: true, force: true });
 }

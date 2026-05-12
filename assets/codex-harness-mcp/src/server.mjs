@@ -1117,7 +1117,8 @@ const tools = [
         contract: agentSafeContract(result.contract),
         gate: agentSafeGate(result.gate),
         gateMarkdown: result.markdown,
-        autoEvalRuns: result.autoEvalRuns || []
+        autoEvalRuns: result.autoEvalRuns || [],
+        coverageWarning: result.coverageWarning ?? null
       };
     }
   },

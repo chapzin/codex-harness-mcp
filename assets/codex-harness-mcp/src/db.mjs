@@ -315,6 +315,41 @@ export function closeHarnessDb(harnessRoot) {
   connections.delete(dbPath);
 }
 
+const migratedRoots = new Set();
+
+export function hasBeenMigrated(harnessRoot) {
+  return migratedRoots.has(harnessRoot);
+}
+
+export function resetMigrationCache(harnessRoot) {
+  if (harnessRoot) {
+    migratedRoots.delete(harnessRoot);
+  } else {
+    migratedRoots.clear();
+  }
+}
+
+export async function ensureProjectMigrated(harnessRoot) {
+  if (!isSqliteAvailable()) return;
+  if (migratedRoots.has(harnessRoot)) return;
+  try {
+    const db = openHarnessDb(harnessRoot);
+    const stateRow = db.prepare("SELECT 1 AS x FROM state_snapshots WHERE snapshot_id = 'current'").get();
+    if (!stateRow) {
+      const stateFile = path.join(harnessRoot, "state.json");
+      try {
+        await fs.access(stateFile);
+        await migrateFromJson(harnessRoot);
+      } catch {
+        // no JSON to migrate from; first-run case
+      }
+    }
+  } catch {
+    // best-effort; do not block reads on migration failure
+  }
+  migratedRoots.add(harnessRoot);
+}
+
 function normalizeId(value) {
   if (value === null || value === undefined) return null;
   return String(value);
@@ -323,6 +358,45 @@ function normalizeId(value) {
 function bigIntToNumber(v) {
   if (typeof v === "bigint") return Number(v);
   return v;
+}
+
+export function readState(harnessRoot) {
+  if (!isSqliteAvailable()) return null;
+  const db = openHarnessDb(harnessRoot);
+  const row = db
+    .prepare("SELECT payload_json FROM state_snapshots WHERE snapshot_id = 'current'")
+    .get();
+  if (!row || !row.payload_json) return null;
+  try {
+    const parsed = JSON.parse(row.payload_json);
+    if (parsed && typeof parsed === "object" && parsed.state && typeof parsed.state === "object" && !Array.isArray(parsed.events)) {
+      return parsed.state;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function writeState(harnessRoot, state) {
+  if (!isSqliteAvailable()) {
+    throw new Error(NODE_22_REQUIRED);
+  }
+  const db = openHarnessDb(harnessRoot);
+  const stmt = db.prepare(
+    `INSERT OR REPLACE INTO state_snapshots
+      (snapshot_id, taken_at, payload_json, schema_version, mirrored_at)
+     VALUES (?, ?, ?, ?, ?)`
+  );
+  const nowTs = new Date().toISOString();
+  const info = stmt.run(
+    "current",
+    nowTs,
+    JSON.stringify(state),
+    CURRENT_SCHEMA_VERSION,
+    nowTs
+  );
+  return { ok: true, rowsAffected: bigIntToNumber(info.changes) };
 }
 
 export function mirrorToDb(harnessRoot, table, row) {
@@ -599,6 +673,21 @@ export async function migrateFromJson(harnessRoot) {
   }
   const summary = [];
   for (const table of MIRRORABLE_TABLES) {
+    if (table === "state_snapshots") {
+      const stateFile = path.join(harnessRoot, "state.json");
+      let mirrored = 0;
+      let failed = 0;
+      try {
+        const raw = await fs.readFile(stateFile, "utf8");
+        const parsed = JSON.parse(raw);
+        writeState(harnessRoot, parsed);
+        mirrored = 1;
+      } catch (err) {
+        if (err.code !== "ENOENT") failed = 1;
+      }
+      summary.push({ table, candidates: mirrored + failed, mirrored, failed });
+      continue;
+    }
     const rows = await loadJsonRowsForTable(harnessRoot, table);
     let mirrored = 0;
     let failed = 0;

@@ -16,7 +16,10 @@ import { emitOtelSpanRecord, isOtelEnabled } from "./otel-export.mjs";
 import {
   isSqliteAvailable as isHarnessDbAvailable,
   checkIntegrity as checkHarnessDbIntegrity,
-  migrateFromJson as migrateHarnessDbFromJson
+  migrateFromJson as migrateHarnessDbFromJson,
+  ensureProjectMigrated as ensureHarnessDbMigrated,
+  readState as readStateFromDb,
+  writeState as writeStateToDb
 } from "./db.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
@@ -688,8 +691,20 @@ async function recoverCorruptState(projectPath) {
 }
 
 export async function loadState(projectPath) {
-  const raw = await readStateRaw(projectPath);
-  const state = raw || (await recoverCorruptState(projectPath));
+  const harnessRoot = harnessPath(projectPath);
+  let state = null;
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      state = readStateFromDb(harnessRoot);
+    } catch {
+      state = null;
+    }
+  }
+  if (!state) {
+    const raw = await readStateRaw(projectPath);
+    state = raw || (await recoverCorruptState(projectPath));
+  }
   return {
     ...DEFAULT_STATE,
     ...state,
@@ -704,7 +719,20 @@ export async function loadState(projectPath) {
 }
 
 export async function saveState(projectPath, state) {
-  await writeJson(harnessPath(projectPath, "state.json"), state);
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    try {
+      writeStateToDb(harnessRoot, state);
+    } catch (err) {
+      process.stderr.write(`harness warning: writeState failed (${err?.message || err}); falling back to JSON-only.\n`);
+    }
+  }
+  try {
+    await writeJson(harnessPath(projectPath, "state.json"), state);
+  } catch (err) {
+    if (!isHarnessDbAvailable()) throw err;
+    process.stderr.write(`harness warning: state.json export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+  }
 }
 
 export async function migrateHarness(input = {}) {

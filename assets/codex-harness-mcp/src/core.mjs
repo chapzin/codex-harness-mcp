@@ -3073,8 +3073,26 @@ export async function readRecentTraces(projectPath, limit = 8) {
 
 export async function readRecentGates(projectPath, limit = 8) {
   await ensureHarness({ project_path: projectPath });
-  const gatesRoot = harnessPath(resolveProjectPath(projectPath), "gates");
-  const names = (await fs.readdir(gatesRoot)).filter((name) => name.endsWith(".json")).sort();
+  const resolved = resolveProjectPath(projectPath);
+  const harnessRoot = harnessPath(resolved);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const rows = listRowsFromDb(harnessRoot, "gates");
+      if (rows.length > 0) {
+        return sortByTimestampDesc(rows).slice(0, limit);
+      }
+    } catch {
+      // fall through to JSON
+    }
+  }
+  const gatesRoot = harnessPath(resolved, "gates");
+  let names = [];
+  try {
+    names = (await fs.readdir(gatesRoot)).filter((name) => name.endsWith(".json")).sort();
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
   const gates = [];
   for (const name of names.slice(-Math.max(limit, 1) * 2)) {
     const gate = await readJson(path.join(gatesRoot, name), null);
@@ -3539,7 +3557,20 @@ export async function evalGate(input) {
   };
 
   const markdown = renderGate(contract, gate);
-  await writeJson(harnessPath(projectPath, "gates", `${gate.id}.json`), gate);
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    try {
+      mirrorRowToDb(harnessRoot, "gates", gate);
+    } catch (err) {
+      process.stderr.write(`harness warning: gate SQLite write failed (${err?.message || err}); continuing with JSON-only.\n`);
+    }
+  }
+  try {
+    await writeJson(harnessPath(projectPath, "gates", `${gate.id}.json`), gate);
+  } catch (err) {
+    if (!isHarnessDbAvailable()) throw err;
+    process.stderr.write(`harness warning: gate JSON export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+  }
   await fs.writeFile(harnessPath(projectPath, "gates", `${gate.id}.md`), markdown, "utf8");
 
   await mutateState(projectPath, (state) => {

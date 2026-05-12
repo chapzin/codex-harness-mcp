@@ -247,7 +247,9 @@ This makes the agent's operating state inspectable in normal files rather than h
 - `harness_record_harness_profile`
 - `harness_list_harness_profiles`
 - `harness_record_eval_case`
+- `harness_list_eval_cases`
 - `harness_record_eval_run`
+- `harness_list_eval_runs`
 - `harness_compare_eval_runs`
 - `harness_record_harness_proposal`
 - `harness_list_harness_proposals`
@@ -431,10 +433,116 @@ The server uses only Node.js built-in modules. It writes project-local state und
 
 Stored user/source content is returned inside `<untrusted-data>` boundaries so the agent treats it as evidence, not instructions.
 
+## Eval framework end-to-end loop
+
+`v0.3.0` closes the eval framework into a self-contained workflow. Once eval cases are registered and a contract has verification traces, the loop runs automatically:
+
+```
+harness_next_step
+    ↓ advisories[]
+    ↓   coverage_warnings_observed    → "register eval_case for matched area"
+    ↓   deferred_signal_threshold_met → "re-run verify-before-commit"
+operator acts (records eval_case OR opens contract for reconsidered frente)
+    ↓
+harness_eval_gate
+    ↓ autoEvalRuns[]     (auto-recorded when verification_checks ⊇ contract traces)
+    ↓ coverageWarning    (soft signal when verdict=pass but autoEvalRuns=[])
+state.counters.coverageWarningsFired++
+    ↓
+harness_list.deferredSignals  (S2/C4/M5/regression_coverage_strong with shouldReconsider booleano)
+    ↓
+next harness_next_step reflects updated state
+```
+
+### Output additions in v0.3.0
+
+**`harness_eval_gate` response**:
+
+```json
+{
+  "gate": { "verdict": "pass", "uncheckedConditions": [], ... },
+  "autoEvalRuns": [
+    {
+      "evalRunId": "eval-run-2026-05-12-abc",
+      "evalCaseId": "eval-case-2026-05-12-trace-ingestion-...",
+      "score": 1.0,
+      "verdict": "pass",
+      "matchedCount": 1,
+      "totalChecks": 1
+    }
+  ],
+  "coverageWarning": null
+}
+```
+
+`autoEvalRuns` is evidence-derived (score = matched/totalChecks); fires only on `verdict=pass`. `coverageWarning` is `{ type, reason, suggestion }` when gate passes but no eval_case applies (suppressed in fresh projects to avoid spam).
+
+**`harness_list` response** now includes `deferredSignals`:
+
+```json
+{
+  "deferredSignals": {
+    "s2_worker_threads": {
+      "corpusSize": 30,
+      "rebuildIndexWarmMsEstimate": 27,
+      "threshold": { "corpusSize": 500 },
+      "shouldReconsider": false
+    },
+    "c4_rego_lite": {
+      "policyCreatedAt": "2026-05-10T15:41:06Z",
+      "policyUpdatedAt": "2026-05-10T15:41:06Z",
+      "policyCustomized": false,
+      "threshold": { "policyCustomized": true },
+      "shouldReconsider": false
+    },
+    "m5_reflection": {
+      "proposalsCount": 0,
+      "decisionsCount": 0,
+      "threshold": { "proposalsCount": 5 },
+      "shouldReconsider": false
+    },
+    "regression_coverage_strong": {
+      "coverageWarningFiredCount": 0,
+      "threshold": { "coverageWarningFiredCount": 10 },
+      "shouldReconsider": false
+    }
+  }
+}
+```
+
+Each signal compares current state against documented un-defer thresholds derived from verify-before-commit triage.
+
+**`harness_next_step` response** now includes `advisories[]`:
+
+```json
+{
+  "recommendation": "Evaluate the completion gate.",
+  "advisories": [
+    {
+      "type": "coverage_warnings_observed",
+      "count": 3,
+      "suggestion": "evalGate has emitted coverage warnings. Consider registering an eval_case whose verification_checks match the affected contract verification_commands."
+    },
+    {
+      "type": "deferred_signal_threshold_met",
+      "signal": "m5_reflection",
+      "suggestion": "Threshold reached for m5_reflection. Re-run verify-before-commit with fresh empirical data before opening a contract."
+    }
+  ]
+}
+```
+
+Empty `advisories: []` when state is clean. Surfaces signals into the operator's natural "what's next?" workflow without requiring separate `harness_list` calls.
+
+### Listing tools symmetric with peer listing tools
+
+`harness_list_eval_cases` and `harness_list_eval_runs` mirror `harness_list_knowledge` / `harness_list_harness_profiles`: `limit` between 1-100 (default 10), sort by `ts` descending, wrap user-controlled text in `<untrusted-data>` boundaries.
+
 ## Version highlights
 
 | Version | Highlights |
 | --- | --- |
+| `0.3.0` | Eval framework end-to-end loop: `harness_list_eval_cases` + `harness_list_eval_runs` symmetric with peer listing tools, auto-eval bind (evidence-derived eval_run on gate pass with matching verification_checks), coverage warning (soft signal when gate passes without eval coverage), `state.counters.coverageWarningsFired`, `harness_list.deferredSignals` dashboard (S2/C4/M5/regression_coverage_strong un-defer thresholds), `harness_next_step.advisories[]` surfaces signals into natural workflow. Track record verify-before-commit: 43% → 75%. 4 roadmap V2 frentes empirically refuted (S2 perf, C4 demand, M5 framework-claim, regression_coverage_strong premature) — thresholds documented for future un-defer. |
 | `0.2.0` | Hardening series rounds 1-9: cross-process file lock for multi-client safety, atomic writes via temp+rename with symlink refusal, JSON Schema validation, state.json corruption recovery with backup, in-process mutex with map cleanup, path scope enforcement, knowledge index bounded growth, resource pagination, ID space widened 24→48 bits, Unicode bidi/format char stripping, protocolVersion allow-list, `cwd` over `PWD` precedence, migration backup rotation, tmp orphan reaper. |
 | `0.1.10` | Project-local governance policy, `PASS/FLAG/BLOCK` audit/report, governance resource/prompt, and release-quality documentation gate. |
 | `0.1.9` | Multi-client MCP installer/config generator for Claude Code, OpenCode, Kilo, Gemini CLI, Cursor, VS Code, Cline, Windsurf, and best-effort Roo project config. |

@@ -160,7 +160,9 @@ Use codex-harness. Audit governance with harness_audit_governance or harness_exp
 | `harness_record_harness_profile` | Store a named harness mode/profile for later evaluation. |
 | `harness_list_harness_profiles` | List stored harness profiles. |
 | `harness_record_eval_case` | Store a tagged eval case with acceptance criteria and verification checks. |
+| `harness_list_eval_cases` | List recent stored eval cases sorted by timestamp desc. |
 | `harness_record_eval_run` | Store an externally run eval result with model, score, verdict, metrics, traces, and regressions. |
+| `harness_list_eval_runs` | List recent stored eval runs sorted by timestamp desc. |
 | `harness_compare_eval_runs` | Compare two eval runs before promoting a harness change. |
 | `harness_record_harness_proposal` | Store a measured harness-change proposal with baseline/candidate/holdout evidence. |
 | `harness_list_harness_proposals` | List stored harness-change proposals. |
@@ -177,10 +179,10 @@ Use codex-harness. Audit governance with harness_audit_governance or harness_exp
 | `harness_query_knowledge` | Search persistent local harness knowledge before planning or implementation. |
 | `harness_rebuild_knowledge_index` | Rebuild the local knowledge index from stored knowledge files. |
 | `harness_list_knowledge` | List recent stored knowledge items. |
-| `harness_next_step` | Recommend the smallest useful next action from current state. |
-| `harness_eval_gate` | Record an explicit completion check. |
+| `harness_next_step` | Recommend the smallest useful next action from current state. Returns `advisories[]` surfacing eval coverage warnings and deferred-signal threshold notifications. |
+| `harness_eval_gate` | Record an explicit completion check. Auto-binds `eval_run` records when contract verification_checks match eval_case verification_checks (`autoEvalRuns`) and emits `coverageWarning` when gate passes without eval coverage. |
 | `harness_compact_context` | Generate compact state summary for resume or handoff. |
-| `harness_list` | Inspect current harness state, contracts, and recent traces. |
+| `harness_list` | Inspect current harness state, contracts, and recent traces. Returns `deferredSignals` exposing un-defer thresholds for S2/C4/M5/regression_coverage_strong frentes with `shouldReconsider` booleans. |
 
 ## MCP resources and prompts
 

@@ -2275,6 +2275,32 @@ export async function recordEvalRun(input = {}) {
   });
 }
 
+export async function listEvalCases(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const limit = Math.min(Math.max(input.limit || 10, 1), 100);
+  const cases = await readEvalCases(projectPath);
+  return {
+    projectPath,
+    cases: cases
+      .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+      .slice(0, limit)
+      .map(agentSafeEvalCase)
+  };
+}
+
+export async function listEvalRuns(input = {}) {
+  const { projectPath } = await ensureHarness({ project_path: input.project_path });
+  const limit = Math.min(Math.max(input.limit || 10, 1), 100);
+  const runs = await readEvalRuns(projectPath);
+  return {
+    projectPath,
+    runs: runs
+      .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+      .slice(0, limit)
+      .map(agentSafeEvalRun)
+  };
+}
+
 export async function compareEvalRuns(input = {}) {
   const { projectPath } = await ensureHarness({ project_path: input.project_path });
   const baseline = await readEvalRun(projectPath, input.baseline_run_id);

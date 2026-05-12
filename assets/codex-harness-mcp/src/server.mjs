@@ -17,6 +17,8 @@ import {
   exportAgentCard,
   exportObservabilityReport,
   exportNaturalLanguageHarness,
+  listEvalCases,
+  listEvalRuns,
   listHarness,
   listHarnessProfiles,
   listHarnessProposals,
@@ -747,6 +749,34 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: compareEvalRuns
+  },
+  {
+    name: "harness_list_eval_cases",
+    description: "List recent stored eval cases (id, title, split, acceptance criteria, tags) sorted by timestamp desc.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 10 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listEvalCases
+  },
+  {
+    name: "harness_list_eval_runs",
+    description: "List recent stored eval runs (id, eval_case_id, verdict, score, metrics) sorted by timestamp desc.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        limit: { type: "integer", minimum: 1, default: 10 }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: listEvalRuns
   },
   {
     name: "harness_record_harness_proposal",

@@ -13,6 +13,11 @@ import {
   isFtsAvailable
 } from "./fts-index.mjs";
 import { emitOtelSpanRecord, isOtelEnabled } from "./otel-export.mjs";
+import {
+  isSqliteAvailable as isHarnessDbAvailable,
+  checkIntegrity as checkHarnessDbIntegrity,
+  migrateFromJson as migrateHarnessDbFromJson
+} from "./db.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
@@ -4736,6 +4741,39 @@ export function renderCompactContext({ state, contract, traces, projectPath, dri
   );
 
   return `${lines.join("\n")}\n`;
+}
+
+export async function checkStorageIntegrity(input = {}) {
+  const projectPath = resolveProjectPath(input.project_path);
+  const harnessRoot = harnessPath(projectPath);
+  if (!isHarnessDbAvailable()) {
+    return {
+      ok: false,
+      sqliteAvailable: false,
+      reason:
+        "Harness DB requires node:sqlite (Node.js >= 22.5). Upgrade Node to use storage integrity checks.",
+      tables: []
+    };
+  }
+  const deep = input.deep === true;
+  const result = await checkHarnessDbIntegrity(harnessRoot, { deep });
+  return result;
+}
+
+export async function migrateToSqlite(input = {}) {
+  const projectPath = resolveProjectPath(input.project_path);
+  const harnessRoot = harnessPath(projectPath);
+  if (!isHarnessDbAvailable()) {
+    return {
+      ok: false,
+      sqliteAvailable: false,
+      reason:
+        "Harness DB requires node:sqlite (Node.js >= 22.5). Upgrade Node to migrate JSON to SQLite.",
+      tables: []
+    };
+  }
+  const result = await migrateHarnessDbFromJson(harnessRoot);
+  return result;
 }
 
 function bulletList(items, options = {}) {

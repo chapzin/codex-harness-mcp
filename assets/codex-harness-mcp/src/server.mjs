@@ -50,7 +50,9 @@ import {
   recordSubagentHandoff,
   renderGovernanceReport,
   writeGovernancePolicy,
-  updateState
+  updateState,
+  checkStorageIntegrity,
+  migrateToSqlite
 } from "./core.mjs";
 import {
   getHarnessPrompt,
@@ -485,6 +487,37 @@ const tools = [
     },
     outputSchema: objectOutputSchema,
     handler: emitOtelSpan
+  },
+  {
+    name: "harness_check_storage_integrity",
+    description: "Audit consistency between .codex-harness/ JSON files and the SQLite mirror in .codex-harness/harness.db. Returns per-table {jsonCount, sqliteCount, countDelta, missingInJson, missingInSqlite, contentMismatch} plus PRAGMA quick_check (or integrity_check when deep=true). Read-only; does not write or repair. Requires Node.js >= 22.5.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty,
+        deep: {
+          type: "boolean",
+          default: false,
+          description: "When true, run full PRAGMA integrity_check and compare every overlapping row's payload (slower; suitable for ad-hoc audits)."
+        }
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: checkStorageIntegrity
+  },
+  {
+    name: "harness_migrate_to_sqlite",
+    description: "One-shot batch import of all existing .codex-harness/ JSON entities into the SQLite mirror at .codex-harness/harness.db. Idempotent: re-running uses INSERT OR REPLACE on natural primary keys (contract_id, trace_id, etc) so row counts stay stable. Audit-only mirror — JSON remains source-of-truth in this phase. Requires Node.js >= 22.5.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...projectPathProperty
+      },
+      additionalProperties: false
+    },
+    outputSchema: objectOutputSchema,
+    handler: migrateToSqlite
   },
   {
     name: "harness_query_knowledge_fts",

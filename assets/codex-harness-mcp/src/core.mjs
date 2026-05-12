@@ -3897,6 +3897,7 @@ export async function listHarness(input = {}) {
   const state = await loadState(projectPath);
   const contracts = await listContracts(projectPath);
   const traces = await readRecentTraces(projectPath, input.max_traces || 5);
+  const deferredSignals = await computeDeferredSignals(projectPath, state);
   return {
     projectPath,
     harnessRoot,
@@ -3907,8 +3908,80 @@ export async function listHarness(input = {}) {
       status: contract.status,
       createdAt: contract.createdAt
     })),
-    recentTraces: traces.map(agentSafeTrace)
+    recentTraces: traces.map(agentSafeTrace),
+    deferredSignals
   };
+}
+
+const DEFERRED_SIGNAL_THRESHOLDS = {
+  s2WorkerThreadsCorpusSize: 500,
+  c4PolicyCustomizedRequired: true,
+  m5ProposalsCount: 5,
+  regressionCoverageStrongFiredCount: 10
+};
+
+async function computeDeferredSignals(projectPath, state) {
+  const counters = state.counters || {};
+  const corpusSize = counters.knowledgeItems || 0;
+  const proposalsCount = counters.harnessProposals || 0;
+  const decisionsCount = counters.promotionDecisions || 0;
+
+  let policyCreatedAt = null;
+  let policyUpdatedAt = null;
+  try {
+    const policy = await readJson(harnessPath(projectPath, "policy.json"), null);
+    if (policy) {
+      policyCreatedAt = policy.createdAt || null;
+      policyUpdatedAt = policy.updatedAt || null;
+    }
+  } catch {
+    // policy not present yet; treat as fresh
+  }
+  const policyCustomized = Boolean(
+    policyCreatedAt && policyUpdatedAt && policyUpdatedAt !== policyCreatedAt
+  );
+
+  const coverageWarningFiredCount = 0;
+
+  return {
+    s2_worker_threads: {
+      corpusSize,
+      rebuildIndexWarmMsEstimate: estimateRebuildIndexMs(corpusSize),
+      threshold: {
+        corpusSize: DEFERRED_SIGNAL_THRESHOLDS.s2WorkerThreadsCorpusSize
+      },
+      shouldReconsider: corpusSize >= DEFERRED_SIGNAL_THRESHOLDS.s2WorkerThreadsCorpusSize
+    },
+    c4_rego_lite: {
+      policyCreatedAt,
+      policyUpdatedAt,
+      policyCustomized,
+      threshold: {
+        policyCustomized: DEFERRED_SIGNAL_THRESHOLDS.c4PolicyCustomizedRequired
+      },
+      shouldReconsider: policyCustomized
+    },
+    m5_reflection: {
+      proposalsCount,
+      decisionsCount,
+      threshold: {
+        proposalsCount: DEFERRED_SIGNAL_THRESHOLDS.m5ProposalsCount
+      },
+      shouldReconsider: proposalsCount >= DEFERRED_SIGNAL_THRESHOLDS.m5ProposalsCount
+    },
+    regression_coverage_strong: {
+      coverageWarningFiredCount,
+      threshold: {
+        coverageWarningFiredCount: DEFERRED_SIGNAL_THRESHOLDS.regressionCoverageStrongFiredCount
+      },
+      shouldReconsider: false,
+      note: "coverageWarningFiredCount is a placeholder (no counter yet); track once coverageWarning sees real usage."
+    }
+  };
+}
+
+function estimateRebuildIndexMs(corpusSize) {
+  return Math.round(Math.max(corpusSize, 1) * 0.9);
 }
 
 export function renderHarnessGuide(projectPath) {

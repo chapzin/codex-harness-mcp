@@ -249,6 +249,100 @@ try {
       `matched=${entry.matchedCount}/${entry.totalChecks}`
     );
   }
+
+  // Scenario 6: Multi-case match — 2 eval_cases both fully matched → autoEvalRuns has 2 entries
+  {
+    const contractResult = await createContract({
+      project_path: projectPath,
+      title: "scenario-6 contract multi-case",
+      goal: "Verify binding emits one entry per matched eval_case",
+      completion_conditions: ["condition-f"]
+    });
+    const contractId = contractResult.contract.id;
+
+    const caseA = await recordEvalCase({
+      project_path: projectPath,
+      title: "scenario-6 case A",
+      split: "regression",
+      verification_checks: ["node tests/scenario-6-shared.mjs passes"]
+    });
+    const caseB = await recordEvalCase({
+      project_path: projectPath,
+      title: "scenario-6 case B",
+      split: "regression",
+      verification_checks: ["node tests/scenario-6-shared.mjs passes"]
+    });
+
+    await recordVerification({
+      project_path: projectPath,
+      contract_id: contractId,
+      command_or_check: "node tests/scenario-6-shared.mjs",
+      status: "pass",
+      raw_output: "shared passes"
+    });
+
+    const gateResult = await evalGate({
+      project_path: projectPath,
+      contract_id: contractId,
+      checked_conditions: ["condition-f"]
+    });
+
+    check(
+      "s6.multi-case.autoEvalRuns-two-entries",
+      Array.isArray(gateResult.autoEvalRuns) && gateResult.autoEvalRuns.length === 2,
+      `count=${gateResult.autoEvalRuns?.length}`
+    );
+    const evalCaseIds = (gateResult.autoEvalRuns || []).map((entry) => entry.evalCaseId);
+    check(
+      "s6.multi-case.both-cases-bound",
+      evalCaseIds.includes(caseA.case.id) && evalCaseIds.includes(caseB.case.id),
+      JSON.stringify(evalCaseIds)
+    );
+  }
+
+  // Scenario 7: Gate verdict=unknown → no auto-binding (only pass triggers bind)
+  {
+    const contractResult = await createContract({
+      project_path: projectPath,
+      title: "scenario-7 contract unknown verdict",
+      goal: "Verify no-binding when gate verdict is unknown",
+      completion_conditions: ["condition-g1", "condition-g2"]
+    });
+    const contractId = contractResult.contract.id;
+
+    await recordEvalCase({
+      project_path: projectPath,
+      title: "scenario-7 case",
+      split: "regression",
+      verification_checks: ["node tests/scenario-7.mjs passes"]
+    });
+
+    await recordVerification({
+      project_path: projectPath,
+      contract_id: contractId,
+      command_or_check: "node tests/scenario-7.mjs",
+      status: "pass",
+      raw_output: "passes"
+    });
+
+    // Leave condition-g2 unchecked and do not pass explicit verdict → derives "unknown"
+    const gateResult = await evalGate({
+      project_path: projectPath,
+      contract_id: contractId,
+      checked_conditions: ["condition-g1"]
+    });
+
+    check(
+      "s7.unknown-verdict.gate-verdict",
+      gateResult.gate.verdict === "unknown",
+      gateResult.gate.verdict
+    );
+    check(
+      "s7.unknown-verdict.no-binding",
+      Array.isArray(gateResult.autoEvalRuns) && gateResult.autoEvalRuns.length === 0,
+      `got ${JSON.stringify(gateResult.autoEvalRuns)}`
+    );
+  }
 } finally {
   await fs.rm(projectPath, { recursive: true, force: true });
 }

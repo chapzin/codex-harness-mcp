@@ -146,7 +146,8 @@ const DEFAULT_STATE = {
     evalRuns: 0,
     harnessProfiles: 0,
     harnessProposals: 0,
-    promotionDecisions: 0
+    promotionDecisions: 0,
+    coverageWarningsFired: 0
   },
   decisions: [],
   events: [],
@@ -3765,6 +3766,12 @@ export async function evalGate(input) {
 
   const coverageWarning = await computeCoverageWarning(projectPath, verdict, autoEvalRuns);
 
+  if (coverageWarning) {
+    await mutateState(projectPath, (state) => {
+      state.counters.coverageWarningsFired = (state.counters.coverageWarningsFired || 0) + 1;
+    });
+  }
+
   return { projectPath, contract, gate, markdown, autoEvalRuns, coverageWarning };
 }
 
@@ -3941,7 +3948,7 @@ async function computeDeferredSignals(projectPath, state) {
     policyCreatedAt && policyUpdatedAt && policyUpdatedAt !== policyCreatedAt
   );
 
-  const coverageWarningFiredCount = 0;
+  const coverageWarningFiredCount = counters.coverageWarningsFired || 0;
 
   return {
     s2_worker_threads: {
@@ -3974,8 +3981,8 @@ async function computeDeferredSignals(projectPath, state) {
       threshold: {
         coverageWarningFiredCount: DEFERRED_SIGNAL_THRESHOLDS.regressionCoverageStrongFiredCount
       },
-      shouldReconsider: false,
-      note: "coverageWarningFiredCount is a placeholder (no counter yet); track once coverageWarning sees real usage."
+      shouldReconsider:
+        coverageWarningFiredCount >= DEFERRED_SIGNAL_THRESHOLDS.regressionCoverageStrongFiredCount
     }
   };
 }

@@ -2,9 +2,13 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  createContract,
+  evalGate,
   listHarness,
-  recordKnowledge,
+  recordEvalCase,
   recordHarnessProposal,
+  recordKnowledge,
+  recordVerification,
   writeGovernancePolicy
 } from "../assets/codex-harness-mcp/src/core.mjs";
 
@@ -167,6 +171,74 @@ try {
       s2?.shouldReconsider === false,
       `corpus=${s2?.corpusSize} threshold expected high`
     );
+  }
+
+  // Scenario 5: Coverage warning fires increment counter and feed deferred signal
+  {
+    const freshProject = await fs.mkdtemp(path.join(os.tmpdir(), "codex-harness-coverage-counter-"));
+    try {
+      // Pre-state: zero coverage warnings fired
+      const initial = await listHarness({ project_path: freshProject });
+      check(
+        "s5.initial-counter-zero",
+        initial.deferredSignals?.regression_coverage_strong?.coverageWarningFiredCount === 0,
+        `got ${initial.deferredSignals?.regression_coverage_strong?.coverageWarningFiredCount}`
+      );
+
+      // Set up contract + eval_case for OTHER area, then pass gate to trigger coverageWarning
+      const contractResult = await createContract({
+        project_path: freshProject,
+        title: "s5 fire coverage warning",
+        goal: "Trigger coverageWarning to increment counter",
+        completion_conditions: ["only-condition"]
+      });
+      const contractId = contractResult.contract.id;
+
+      // Register an eval_case for an unrelated area
+      await recordEvalCase({
+        project_path: freshProject,
+        title: "unrelated case",
+        split: "regression",
+        verification_checks: ["node tests/unrelated.mjs passes"]
+      });
+
+      // Record verification for THIS contract (no overlap with case's checks)
+      await recordVerification({
+        project_path: freshProject,
+        contract_id: contractId,
+        command_or_check: "node tests/s5-this.mjs",
+        status: "pass",
+        raw_output: "passes"
+      });
+
+      // Fire gate twice — should emit coverageWarning each time
+      await evalGate({
+        project_path: freshProject,
+        contract_id: contractId,
+        checked_conditions: ["only-condition"]
+      });
+      await evalGate({
+        project_path: freshProject,
+        contract_id: contractId,
+        checked_conditions: ["only-condition"]
+      });
+
+      const after = await listHarness({ project_path: freshProject });
+      const rcs = after.deferredSignals?.regression_coverage_strong;
+
+      check(
+        "s5.counter-incremented-to-2",
+        rcs?.coverageWarningFiredCount === 2,
+        `got ${rcs?.coverageWarningFiredCount}`
+      );
+      check(
+        "s5.shouldReconsider-still-false-below-threshold",
+        rcs?.shouldReconsider === false,
+        `count=${rcs?.coverageWarningFiredCount} threshold=${rcs?.threshold?.coverageWarningFiredCount}`
+      );
+    } finally {
+      await fs.rm(freshProject, { recursive: true, force: true });
+    }
   }
 } finally {
   await fs.rm(projectPath, { recursive: true, force: true });

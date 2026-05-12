@@ -22,8 +22,12 @@ import {
   writeState as writeStateToDb,
   mirrorToDb as mirrorRowToDb,
   readRowById as readRowFromDb,
-  listRows as listRowsFromDb
+  listRows as listRowsFromDb,
+  inferMemoryType,
+  isValidMemoryType
 } from "./db.mjs";
+
+export { inferMemoryType, isValidMemoryType };
 
 export const HARNESS_DIR = ".codex-harness";
 export const UNTRUSTED_OPEN = "<untrusted-data";
@@ -394,6 +398,7 @@ export function agentSafeKnowledgeItem(item) {
     id: item.id,
     ts: item.ts,
     kind: item.kind,
+    memoryType: isValidMemoryType(item.memoryType) ? item.memoryType : inferMemoryType(item.kind),
     contractId: item.contractId,
     confidence: item.confidence,
     title: untrustedBlock(item.title, "knowledge.title"),
@@ -1777,19 +1782,25 @@ export async function queryKnowledgeFts(input = {}) {
   }
   const query = sanitizeText(input.query || "", { maxLength: 500 });
   const limit = Math.min(Math.max(Number.isInteger(input.limit) ? input.limit : 5, 1), 50);
-  const matches = queryKnowledgeFtsBackend(harnessRoot, query, limit);
+  const memoryFilter = isValidMemoryType(input.memory_type ?? input.memoryType)
+    ? (input.memory_type ?? input.memoryType)
+    : null;
+  // Over-fetch when filtering so we can still return up to `limit` after partition.
+  const fetchLimit = memoryFilter ? Math.min(50, limit * 4) : limit;
+  const matches = queryKnowledgeFtsBackend(harnessRoot, query, fetchLimit);
   const results = [];
   for (const match of matches) {
     const item = await readKnowledgeItem(projectPath, match.itemId);
     if (!item) continue;
-    results.push({
-      score: match.score,
-      item: agentSafeKnowledgeItem(item)
-    });
+    const safe = agentSafeKnowledgeItem(item);
+    if (memoryFilter && safe.memoryType !== memoryFilter) continue;
+    results.push({ score: match.score, item: safe });
+    if (results.length >= limit) break;
   }
   return {
     projectPath,
     query: untrustedBlock(query, "fts.query"),
+    memoryType: memoryFilter,
     results
   };
 }
@@ -1866,6 +1877,9 @@ export async function queryKnowledge(input = {}) {
   const queryTokens = tokenize(query);
   const maxResults = Math.min(Math.max(input.max_results || 5, 1), 20);
   const filterTags = new Set(sanitizeStringList(input.tags, { maxLength: 80 }).map((tag) => tag.toLowerCase()));
+  const memoryFilter = isValidMemoryType(input.memory_type ?? input.memoryType)
+    ? (input.memory_type ?? input.memoryType)
+    : null;
   let index = await readKnowledgeIndex(projectPath);
   if (!index.items.length) {
     index = await rebuildKnowledgeIndex({ project_path: projectPath }).then((result) => result.index);
@@ -1894,6 +1908,12 @@ export async function queryKnowledge(input = {}) {
     const bodyScore = queryTokens.length === 0 ? 1 : bm25Score(entry, queryTokens, corpus);
     const item = await readKnowledgeItem(projectPath, entry.id);
     if (!item) continue;
+    if (memoryFilter) {
+      const itemMemoryType = isValidMemoryType(item.memoryType)
+        ? item.memoryType
+        : inferMemoryType(item.kind);
+      if (itemMemoryType !== memoryFilter) continue;
+    }
     scored.push({
       score: queryTokens.length === 0 ? 1 : rrfScore,
       bodyScore,
@@ -1921,6 +1941,7 @@ export async function queryKnowledge(input = {}) {
   return {
     projectPath,
     query: untrustedBlock(query, "knowledge.query"),
+    memoryType: memoryFilter,
     results: scored.slice(0, maxResults).map((result) => ({
       score: result.score,
       item: agentSafeKnowledgeItem(result.item),
@@ -2606,10 +2627,20 @@ function buildKnowledgeItem(input, state) {
   }
 
   const kind = normalizeKnowledgeKind(input.kind);
+  const explicitMemoryType =
+    typeof input.memory_type === "string"
+      ? input.memory_type
+      : typeof input.memoryType === "string"
+        ? input.memoryType
+        : null;
+  const memoryType = isValidMemoryType(explicitMemoryType)
+    ? explicitMemoryType
+    : inferMemoryType(kind);
   return {
     id: `knowledge-${today()}-${slugify(title)}-${crypto.randomBytes(6).toString("hex")}`,
     ts: nowIso(),
     kind,
+    memoryType,
     contractId: sanitizeNullableText(input.contract_id || state.activeContractId, { maxLength: 120 }),
     title,
     summary: sanitizeNullableText(input.summary, { maxLength: 1000 }),

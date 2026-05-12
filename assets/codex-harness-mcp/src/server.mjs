@@ -521,14 +521,15 @@ const tools = [
   },
   {
     name: "harness_query_knowledge_fts",
-    description: "Query the knowledge base using SQLite FTS5 full-text search (alternative to BM25+RRF backend). Faster on large corpora. Results ranked by FTS5 bm25() ascending (more negative = better). Requires Node.js >= 22.5.",
+    description: "Query the knowledge base using SQLite FTS5 full-text search (alternative to BM25+RRF backend). Faster on large corpora. Results ranked by FTS5 bm25() ascending (more negative = better). Optional memory_type filter narrows by cognitive taxonomy (episodic/semantic/procedural). Requires Node.js >= 22.5.",
     inputSchema: {
       type: "object",
       required: ["query"],
       properties: {
         ...projectPathProperty,
         query: { type: "string", minLength: 1 },
-        limit: { type: "integer", minimum: 1, maximum: 50, default: 5 }
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 5 },
+        memory_type: { type: "string", enum: ["episodic", "semantic", "procedural"] }
       },
       additionalProperties: false
     },
@@ -939,7 +940,7 @@ const tools = [
   },
   {
     name: "harness_record_knowledge",
-    description: "Persist a generic local knowledge item for future retrieval by the harness RAG index.",
+    description: "Persist a generic local knowledge item for future retrieval by the harness RAG index. Optional memory_type overrides the kind→taxonomy inference (episodic/semantic/procedural).",
     inputSchema: {
       type: "object",
       required: ["title"],
@@ -950,6 +951,7 @@ const tools = [
           type: "string",
           enum: ["knowledge", "research", "implementation_lesson", "decision", "source", "pattern", "project_note"]
         },
+        memory_type: { type: "string", enum: ["episodic", "semantic", "procedural"] },
         title: { type: "string", minLength: 3 },
         summary: { type: "string" },
         content: { type: "string" },
@@ -1018,7 +1020,7 @@ const tools = [
   },
   {
     name: "harness_query_knowledge",
-    description: "Query the local persistent harness knowledge index for relevant research, lessons, and notes.",
+    description: "Query the local persistent harness knowledge index for relevant research, lessons, and notes. Optional memory_type filter narrows by cognitive taxonomy (episodic/semantic/procedural).",
     inputSchema: {
       type: "object",
       required: ["query"],
@@ -1026,7 +1028,8 @@ const tools = [
         ...projectPathProperty,
         query: { type: "string", minLength: 1 },
         tags: stringArray,
-        max_results: { type: "integer", minimum: 1, default: 5 }
+        max_results: { type: "integer", minimum: 1, default: 5 },
+        memory_type: { type: "string", enum: ["episodic", "semantic", "procedural"] }
       },
       additionalProperties: false
     },

@@ -12,7 +12,27 @@ try {
 const NODE_22_REQUIRED =
   "Harness DB requires node:sqlite (Node.js >= 22.5). Upgrade Node or run integrity/migrate tools only on Node 22+.";
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
+
+const MEMORY_TYPES = new Set(["episodic", "semantic", "procedural"]);
+const KIND_TO_MEMORY_TYPE = {
+  implementation_lesson: "episodic",
+  decision: "episodic",
+  knowledge: "semantic",
+  research: "semantic",
+  source: "semantic",
+  project_note: "semantic",
+  pattern: "procedural"
+};
+
+export function inferMemoryType(kind) {
+  if (typeof kind !== "string") return "semantic";
+  return KIND_TO_MEMORY_TYPE[kind] || "semantic";
+}
+
+export function isValidMemoryType(value) {
+  return typeof value === "string" && MEMORY_TYPES.has(value);
+}
 
 export const TABLE_NAMES = [
   "contracts",
@@ -98,6 +118,8 @@ CREATE INDEX IF NOT EXISTS idx_verifications_contract ON verifications(contract_
 CREATE TABLE IF NOT EXISTS knowledge_items (
   item_id TEXT PRIMARY KEY,
   kind TEXT,
+  memory_type TEXT NOT NULL DEFAULT 'semantic'
+    CHECK (memory_type IN ('episodic','semantic','procedural')),
   title TEXT,
   recorded_at TEXT,
   payload_json TEXT NOT NULL,
@@ -105,6 +127,7 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
   mirrored_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_knowledge_kind ON knowledge_items(kind);
+CREATE INDEX IF NOT EXISTS idx_knowledge_memory_type ON knowledge_items(memory_type);
 
 CREATE TABLE IF NOT EXISTS state_snapshots (
   snapshot_id TEXT PRIMARY KEY,
@@ -261,6 +284,12 @@ const COLUMN_EXTRACTORS = {
   }),
   knowledge_items: (row) => ({
     kind: row.kind ?? null,
+    memory_type:
+      isValidMemoryType(row.memoryType)
+        ? row.memoryType
+        : isValidMemoryType(row.memory_type)
+          ? row.memory_type
+          : inferMemoryType(row.kind),
     title: row.title ?? null,
     recorded_at: row.recordedAt ?? row.recorded_at ?? null
   }),
@@ -293,7 +322,11 @@ export function openHarnessDb(harnessRoot) {
   const db = new DatabaseSync(dbPath);
   db.exec(SCHEMA_SQL);
   const versionRow = db.prepare("SELECT MAX(version) AS v FROM schema_version").get();
-  if (!versionRow || versionRow.v == null || Number(versionRow.v) < CURRENT_SCHEMA_VERSION) {
+  const currentVersion = versionRow && versionRow.v != null ? Number(versionRow.v) : 0;
+  if (currentVersion < 2) {
+    applySchemaV2Migrations(db);
+  }
+  if (currentVersion < CURRENT_SCHEMA_VERSION) {
     db.prepare("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)").run(
       CURRENT_SCHEMA_VERSION,
       new Date().toISOString()
@@ -301,6 +334,49 @@ export function openHarnessDb(harnessRoot) {
   }
   connections.set(dbPath, db);
   return db;
+}
+
+function applySchemaV2Migrations(db) {
+  const cols = db.prepare("PRAGMA table_info(knowledge_items)").all();
+  const hasMemoryType = cols.some((c) => c.name === "memory_type");
+  if (!hasMemoryType) {
+    // NOTE: SQLite ALTER TABLE cannot add a column with a CHECK constraint, so migrated
+    // tables lack the IN ('episodic','semantic','procedural') guard that fresh schemas have.
+    // App-layer enforcement (enrichRowForTable + isValidMemoryType in mirrorToDb) keeps writes
+    // through the harness safe. If direct SQL writes ever need to be locked down, a future
+    // migration can recreate the table to restore the CHECK.
+    db.exec("ALTER TABLE knowledge_items ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'semantic'");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_memory_type ON knowledge_items(memory_type)");
+    backfillMemoryTypeFromPayloads(db);
+  }
+}
+
+function backfillMemoryTypeFromPayloads(db) {
+  const rows = db
+    .prepare("SELECT item_id, kind, payload_json FROM knowledge_items")
+    .all();
+  const update = db.prepare("UPDATE knowledge_items SET memory_type = ?, payload_json = ? WHERE item_id = ?");
+  for (const row of rows) {
+    let parsed;
+    try {
+      parsed = JSON.parse(row.payload_json);
+    } catch {
+      parsed = null;
+    }
+    const fromPayload = parsed && typeof parsed.memoryType === "string" ? parsed.memoryType : null;
+    const memoryType = isValidMemoryType(fromPayload)
+      ? fromPayload
+      : inferMemoryType(parsed?.kind ?? row.kind);
+    if (parsed && typeof parsed === "object" && parsed.memoryType !== memoryType) {
+      parsed.memoryType = memoryType;
+      update.run(memoryType, JSON.stringify(parsed), row.item_id);
+    } else if (!parsed) {
+      update.run(memoryType, row.payload_json, row.item_id);
+    } else {
+      // payload already had this memory_type but the column may be the default; ensure it matches
+      update.run(memoryType, JSON.stringify(parsed), row.item_id);
+    }
+  }
 }
 
 export function closeHarnessDb(harnessRoot) {
@@ -433,6 +509,18 @@ export function writeState(harnessRoot, state) {
   return { ok: true, rowsAffected: bigIntToNumber(info.changes) };
 }
 
+function enrichRowForTable(table, row) {
+  if (table === "knowledge_items") {
+    if (!isValidMemoryType(row.memoryType)) {
+      const inferred = isValidMemoryType(row.memory_type)
+        ? row.memory_type
+        : inferMemoryType(row.kind);
+      return { ...row, memoryType: inferred };
+    }
+  }
+  return row;
+}
+
 export function mirrorToDb(harnessRoot, table, row) {
   if (!TABLE_PK[table]) {
     throw new Error(`Unknown mirror table: ${table}`);
@@ -446,14 +534,15 @@ export function mirrorToDb(harnessRoot, table, row) {
   if (!naturalId) {
     throw new Error(`Mirror row for ${table} requires an id (got: ${JSON.stringify(row).slice(0, 80)})`);
   }
+  const enriched = enrichRowForTable(table, row);
   const extractor = COLUMN_EXTRACTORS[table];
-  const extras = extractor ? extractor(row) : {};
+  const extras = extractor ? extractor(enriched) : {};
   const cols = [pkCol, ...Object.keys(extras), "payload_json", "schema_version", "mirrored_at"];
   const placeholders = cols.map(() => "?").join(", ");
   const values = [
     naturalId,
     ...Object.values(extras),
-    JSON.stringify(row),
+    JSON.stringify(enriched),
     CURRENT_SCHEMA_VERSION,
     new Date().toISOString()
   ];

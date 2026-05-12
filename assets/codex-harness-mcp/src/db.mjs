@@ -586,7 +586,7 @@ async function loadJsonRowsForTable(harnessRoot, table) {
     try {
       const raw = await fs.readFile(stateFile, "utf8");
       const parsed = JSON.parse(raw);
-      return [{ id: "current", takenAt: new Date().toISOString(), state: parsed }];
+      return [{ ...parsed, id: "current" }];
     } catch (err) {
       if (err.code === "ENOENT") return [];
       throw err;
@@ -610,6 +610,14 @@ const MIRRORABLE_TABLES = [
   "eval_runs",
   "promotion_decisions"
 ];
+
+function canonicalizeForCompare(table, value) {
+  if (table === "state_snapshots" && value && typeof value === "object") {
+    const { id: _id, ...rest } = value;
+    return JSON.stringify(rest);
+  }
+  return JSON.stringify(value);
+}
 
 export async function checkIntegrity(harnessRoot, options = {}) {
   if (!isSqliteAvailable()) {
@@ -654,7 +662,9 @@ export async function checkIntegrity(harnessRoot, options = {}) {
         if (!sqliteRow || !jsonRow) continue;
         try {
           const sqliteParsed = JSON.parse(sqliteRow.payload_json);
-          if (JSON.stringify(sqliteParsed) !== JSON.stringify(jsonRow)) {
+          const sqliteCanonical = canonicalizeForCompare(table, sqliteParsed);
+          const jsonCanonical = canonicalizeForCompare(table, jsonRow);
+          if (sqliteCanonical !== jsonCanonical) {
             contentMismatch.push(id);
           }
         } catch {

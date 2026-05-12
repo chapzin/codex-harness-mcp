@@ -333,17 +333,7 @@ export async function ensureProjectMigrated(harnessRoot) {
   if (!isSqliteAvailable()) return;
   if (migratedRoots.has(harnessRoot)) return;
   try {
-    const db = openHarnessDb(harnessRoot);
-    const stateRow = db.prepare("SELECT 1 AS x FROM state_snapshots WHERE snapshot_id = 'current'").get();
-    if (!stateRow) {
-      const stateFile = path.join(harnessRoot, "state.json");
-      try {
-        await fs.access(stateFile);
-        await migrateFromJson(harnessRoot);
-      } catch {
-        // no JSON to migrate from; first-run case
-      }
-    }
+    await migrateFromJson(harnessRoot);
   } catch {
     // best-effort; do not block reads on migration failure
   }
@@ -376,6 +366,50 @@ export function readState(harnessRoot) {
   } catch {
     return null;
   }
+}
+
+export function readRowById(harnessRoot, table, id) {
+  if (!isSqliteAvailable()) return null;
+  if (!TABLE_PK[table]) throw new Error(`Unknown table: ${table}`);
+  const db = openHarnessDb(harnessRoot);
+  const pkCol = TABLE_PK[table];
+  const row = db
+    .prepare(`SELECT payload_json FROM ${table} WHERE ${pkCol} = ?`)
+    .get(String(id));
+  if (!row || !row.payload_json) return null;
+  try {
+    return JSON.parse(row.payload_json);
+  } catch {
+    return null;
+  }
+}
+
+export function listRows(harnessRoot, table, options = {}) {
+  if (!isSqliteAvailable()) return [];
+  if (!TABLE_PK[table]) throw new Error(`Unknown table: ${table}`);
+  const db = openHarnessDb(harnessRoot);
+  const pkCol = TABLE_PK[table];
+  const orderCol = options.orderBy === "ts" && tableHasTsColumn(table) ? "ts" : pkCol;
+  const direction = options.descending ? "DESC" : "ASC";
+  const limit = Number.isInteger(options.limit) && options.limit > 0 ? Math.min(options.limit, 5000) : 5000;
+  const stmt = db.prepare(
+    `SELECT payload_json FROM ${table} ORDER BY ${orderCol} ${direction} LIMIT ?`
+  );
+  const rows = stmt.all(limit);
+  const out = [];
+  for (const r of rows) {
+    if (!r || !r.payload_json) continue;
+    try {
+      out.push(JSON.parse(r.payload_json));
+    } catch {
+      // skip malformed
+    }
+  }
+  return out;
+}
+
+function tableHasTsColumn(table) {
+  return table === "traces";
 }
 
 export function writeState(harnessRoot, state) {

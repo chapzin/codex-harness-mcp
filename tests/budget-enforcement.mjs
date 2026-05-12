@@ -14,6 +14,10 @@ import {
   recordVerification,
   writeJson
 } from "../assets/codex-harness-mcp/src/core.mjs";
+import {
+  isSqliteAvailable,
+  mirrorToDb
+} from "../assets/codex-harness-mcp/src/db.mjs";
 
 const projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "budget-"));
 
@@ -80,11 +84,17 @@ try {
   assert.equal(exceeded.level, "flag", "budget exceeded is a flag, not block");
   assert.match(exceeded.summary, /5\)/, "summary includes maxSteps");
 
-  // Time budget: backdate the contract by mutating its file (simulate elapsed)
+  // Time budget: backdate the contract (simulate elapsed). Since L promoted
+  // SQLite to source-of-truth for contracts, we have to update both layers
+  // for the audit reader (which goes through SQLite first) to see the change.
   const contractFile = harnessPath(projectPath, "contracts", `${cid}.json`);
   const c = await loadContract(projectPath, cid);
   const backdated = new Date(Date.now() - 12 * 60 * 1000).toISOString();
-  await writeJson(contractFile, { ...c, createdAt: backdated });
+  const backdatedContract = { ...c, createdAt: backdated };
+  await writeJson(contractFile, backdatedContract);
+  if (isSqliteAvailable()) {
+    mirrorToDb(harnessPath(projectPath), "contracts", backdatedContract);
+  }
 
   audit = await auditGovernance({ project_path: projectPath, contract_id: cid, max_traces: 50 });
   const timeExceeded = audit.findings.find((f) => f.id === "budget_time_exceeded");

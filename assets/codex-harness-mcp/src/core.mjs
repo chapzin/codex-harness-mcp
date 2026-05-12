@@ -19,7 +19,10 @@ import {
   migrateFromJson as migrateHarnessDbFromJson,
   ensureProjectMigrated as ensureHarnessDbMigrated,
   readState as readStateFromDb,
-  writeState as writeStateToDb
+  writeState as writeStateToDb,
+  mirrorToDb as mirrorRowToDb,
+  readRowById as readRowFromDb,
+  listRows as listRowsFromDb
 } from "./db.mjs";
 
 export const HARNESS_DIR = ".codex-harness";
@@ -965,7 +968,20 @@ export async function createContract(input) {
     notes: sanitizeNullableText(input.notes)
   };
 
-  await writeJson(harnessPath(projectPath, "contracts", `${id}.json`), contract);
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    try {
+      mirrorRowToDb(harnessRoot, "contracts", contract);
+    } catch (err) {
+      process.stderr.write(`harness warning: contract SQLite write failed (${err?.message || err}); continuing with JSON-only.\n`);
+    }
+  }
+  try {
+    await writeJson(harnessPath(projectPath, "contracts", `${id}.json`), contract);
+  } catch (err) {
+    if (!isHarnessDbAvailable()) throw err;
+    process.stderr.write(`harness warning: contract JSON export failed (${err?.message || err}); SQLite remains source-of-truth.\n`);
+  }
   await fs.writeFile(harnessPath(projectPath, "contracts", `${id}.md`), renderContract(contract), "utf8");
 
   return mutateState(projectPath, async (state) => {
@@ -986,8 +1002,24 @@ export async function createContract(input) {
 
 export async function listContracts(projectPath) {
   await ensureHarness({ project_path: projectPath });
-  const root = harnessPath(resolveProjectPath(projectPath), "contracts");
-  const names = await fs.readdir(root);
+  const resolved = resolveProjectPath(projectPath);
+  const harnessRoot = harnessPath(resolved);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const rows = listRowsFromDb(harnessRoot, "contracts");
+      if (rows.length > 0) return rows;
+    } catch {
+      // fall through to JSON
+    }
+  }
+  const root = harnessPath(resolved, "contracts");
+  let names = [];
+  try {
+    names = await fs.readdir(root);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
   const jsonNames = names.filter((name) => name.endsWith(".json")).sort();
   const contracts = [];
   for (const name of jsonNames) {
@@ -1005,6 +1037,16 @@ export async function loadContract(projectPath, contractId) {
   const safeId = safeFileId(selected);
   if (!safeId) {
     return null;
+  }
+  const harnessRoot = harnessPath(projectPath);
+  if (isHarnessDbAvailable()) {
+    await ensureHarnessDbMigrated(harnessRoot);
+    try {
+      const fromDb = readRowFromDb(harnessRoot, "contracts", safeId);
+      if (fromDb) return fromDb;
+    } catch {
+      // fall through to JSON
+    }
   }
   return readJson(harnessPath(projectPath, "contracts", `${safeId}.json`), null);
 }
